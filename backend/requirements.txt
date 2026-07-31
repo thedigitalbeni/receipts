@@ -1,6 +1,13 @@
-# Receipts Backend — Pinned Dependencies (M0)
-# Versions verified against PyPI on 2026-07-29
+# Receipts Backend — Pinned Dependencies
+# Versions verified against PyPI on 2026-07-31
+
+# --- M0: Contract Freeze ---
 fastapi==0.140.13
 pydantic==2.13.4
 uvicorn==0.34.3
 python-multipart==0.0.20
+
+# --- M2: Storage Security & Input Validation ---
+slowapi==0.1.10
+Pillow==12.3.0
+httpx==0.28.1
