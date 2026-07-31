@@ -1,0 +1,32 @@
+name: Supabase Keep-Alive
+
+# Runs every 48 hours to prevent Supabase free-tier 7-day inactivity pause.
+# A bare HTTP GET is insufficient — this performs a real database query
+# to reset the inactivity timer.
+
+on:
+  schedule:
+    # Every 48 hours (at 06:00 UTC on odd days)
+    - cron: '0 6 */2 * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase with a real query
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          response=$(curl -s -o /dev/null -w "%{http_code}" \
+            "${SUPABASE_URL}/rest/v1/receipts?select=id&limit=1" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
+          echo "Supabase responded with HTTP ${response}"
+          if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
+            echo "Keep-alive successful"
+          else
+            echo "Keep-alive failed with status ${response}"
+            exit 1
+          fi

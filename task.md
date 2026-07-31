@@ -1,6 +1,6 @@
 # Receipts — Milestone Progress
 
-- [ ] M0: Contract Freeze
+- [x] M0: Contract Freeze
 - [ ] M1: Infrastructure Skeleton & Reliability Config
 - [ ] M2: Storage Security & Input Validation
 - [ ] M3: Local Forensics (EXIF & pHash)

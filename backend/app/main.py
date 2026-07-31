@@ -1,10 +1,12 @@
 """
-Receipts — FastAPI Application (M0: Contract Freeze)
+Receipts — FastAPI Application
 
 Minimal application exposing the OpenAPI schema from the frozen
 Pydantic contract models. Feature endpoints are added in later
 milestones.
 """
+
+import os
 
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,11 +23,14 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# CORS — strict origins; localhost for dev, production domain added later.
-# Wildcard (*) is explicitly rejected per Section 5.
+# CORS — strict origins from env var; wildcard (*) is explicitly rejected
+# per Section 5. In production, CORS_ORIGINS must contain the exact Vercel
+# domain. Falls back to localhost:3000 for local development.
+_cors_origins_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
+_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
