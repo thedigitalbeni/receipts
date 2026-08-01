@@ -22,29 +22,32 @@ The `trainedAlgorithmicMedia` IPTC digital source type is the canonical
 C2PA declaration for AI-generated content. This asset unambiguously
 triggers Rule 1.
 
-## 2. C2PA-signed image — Rule 2 (Camera/Non-AI Signature) ✅ VERIFIED
+## 2. Rule 2 (Verified Camera Original) — NO LIVE DEMO ASSET
 
-**File:** `c2pa_candidate.jpg`
-**Source:** contentauth/c2pa-rs test fixtures — `CA.jpg`
-**URL:** https://raw.githubusercontent.com/contentauth/c2pa-rs/main/sdk/tests/fixtures/CA.jpg
-**License:** Apache 2.0 / MIT dual (c2pa-rs)
-**Rule mapping:** Rule 2 (Verified Camera Original) — **VERIFIED in M4**
+**Status:** No candidate asset demonstrates Rule 2 live. This is expected
+and acceptable.
 
-**Manifest evidence (c2pa-python 0.37.2):**
-- `claim_generator`: `"make_test_images/0.33.1 c2pa-rs/0.33.1"`
-- `actions`: `"c2pa.opened"`, `"c2pa.color_adjustments"` (brightness/contrast)
-- No `digitalSourceType` field — NOT AI-generated
-- `signature_issuer`: `"C2PA Test Signing Cert"`
-- Has `stds.schema-org.CreativeWork` assertion with `author: "John Doe"`
+**Investigation (M4):** Both `c2pa_candidate.jpg` and
+`rule2_camera_candidate.jpg` (sourced from contentauth/c2pa-rs test
+fixtures) were exhaustively inspected. Their full manifests contain:
+- `claim_generator`: `"make_test_images/c2pa-rs"` — a test harness tool, not camera hardware
+- `actions`: `"c2pa.opened"` + `"c2pa.color_adjustments"` — software editing history
+- No `digitalSourceType` field of any kind
+- No camera/device/hardware/manufacturer/capture assertions anywhere
+  in the complete manifest tree (confirmed via recursive key/value search)
 
-This asset has a valid C2PA manifest but no AI-generation markers.
-It unambiguously triggers Rule 2 (non-AI C2PA signature present).
+These are software-editing provenance records from a test fixture
+generator, not camera hardware signatures. Mapping them to Rule 2
+("Verified Camera Original") would be inaccurate.
 
-**Backup file:** `rule2_camera_candidate.jpg`
-**Source:** contentauth/c2pa-rs test fixtures — `CACA.jpg` (two-deep chain)
-**Manifest:** Same pattern as `c2pa_candidate.jpg` — c2pa.opened +
-c2pa.color_adjustments, no AI markers. Contains an ingredient chain
-(CACA → CA). Also verified to trigger Rule 2.
+**Resolution:** Rule 2's classification logic is validated exclusively
+through the M6 unit test using mocked/synthetic evidence dictionaries.
+This is the same resolution applied to the Rule 2+3 combination
+problem — standard, honest unit-testing practice.
+
+**Files retained for reference (not used in live demo):**
+- `c2pa_candidate.jpg` — contentauth/c2pa-rs `CA.jpg`
+- `rule2_camera_candidate.jpg` — contentauth/c2pa-rs `CACA.jpg`
 
 ## 3. Rule 2+3 combination candidate (Camera-verified AND Recirculated)
 

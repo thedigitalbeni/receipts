@@ -4,7 +4,7 @@
 - [x] M1: Infrastructure Skeleton & Reliability Config
 - [x] M2: Storage Security & Input Validation
 - [x] M3: Local Forensics (EXIF & pHash)
-- [ ] M4: Provenance (C2PA) Integration
+- [x] M4: Provenance (C2PA) Integration
 - [ ] M5: Origin Trace (SerpApi) Integration
 - [ ] M6: Rules Engine & Unit Tests
 - [ ] M7: End-to-End Backend Pipeline
