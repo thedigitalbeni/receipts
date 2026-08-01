@@ -2,8 +2,8 @@
 
 - [x] M0: Contract Freeze
 - [x] M1: Infrastructure Skeleton & Reliability Config
-- [ ] M2: Storage Security & Input Validation
-- [ ] M3: Local Forensics (EXIF & pHash)
+- [x] M2: Storage Security & Input Validation
+- [x] M3: Local Forensics (EXIF & pHash)
 - [ ] M4: Provenance (C2PA) Integration
 - [ ] M5: Origin Trace (SerpApi) Integration
 - [ ] M6: Rules Engine & Unit Tests
