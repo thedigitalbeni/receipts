@@ -63,7 +63,29 @@ its C2PA data.
 The Rule 2 + Rule 3 multi-match logic is validated exclusively through
 the M6 unit test using mocked/synthetic evidence dictionaries.
 
-## 4. Clean image — Rule 5 (No Provenance) ✅ VERIFIED
+## 5. Rule 3 (Recirculated / Out of Context) ✅ VERIFIED
+
+**File:** `rule3_recirculated_candidate.jpg`
+**Source:** Unsplash mountain landscape (photo-1506905925346-21bda4d32df4), CC0-like license
+**License:** Unsplash License (free for commercial and non-commercial use)
+**Rule mapping:** Rule 3 (Recirculated Content) — **VERIFIED in M5**
+
+**Verification evidence (SerpApi Google Lens + Wayback Machine, 2026-08-05):**
+- SerpApi returned **60 visual matches** across different websites
+- Image found on 60+ different sites in different contexts:
+  wine tours, real estate, religious organizations, wellness clinics, etc.
+- Wayback Machine confirmed earliest appearance: **2020-11-01** at sola.network
+  (5.8 years old — exceeds 1-year threshold)
+- Matches documented at: austinpartyride.com, musecap.com, sola.network,
+  luxurydestinationsparkcity.com, abidingwaters.org, and many others
+- Full SerpApi result cached in `rule3_serpapi_result.json`
+
+**Why this works for Rule 3:** This CC0 stock photo has been genuinely
+reproduced across dozens of websites in entirely different contexts over
+multiple years. The pipeline correctly identifies it as having prior
+online appearances with independently verifiable Wayback timestamps.
+
+## 6. Clean image — Rule 5 (No Provenance) ✅ VERIFIED
 
 **File:** `clean_no_provenance.jpg`
 **Source:** Programmatically generated solid-color JPEG (800x600, RGB)
@@ -73,4 +95,6 @@ the M6 unit test using mocked/synthetic evidence dictionaries.
 **Verification evidence (c2pa-python 0.37.2):**
 - `Reader.try_create()` returns `None` — no C2PA manifest found
 - Zero EXIF metadata (confirmed in M3)
-- Zero online history by construction
+- SerpApi returned 59 visual matches (solid-color images match generically),
+  but this does not affect Rule 5 classification since it has no C2PA provenance
+

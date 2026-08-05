@@ -1,0 +1,549 @@
+{
+  "has_matches": true,
+  "match_count": 60,
+  "visual_matches": [
+    {
+      "link": "https://austinpartyride.com/locations/marble-falls",
+      "source": "Austin Party Ride",
+      "title": "Marble Falls Wine Tour, Wedding Shuttle & Party Bus Rental ...",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSV6J1HSiZUlncn4OTwYZ_AHj83q8oYx-IR_G7x6TuTRptMat3T",
+      "position": 1,
+      "domain": "austinpartyride.com",
+      "wayback": null
+    },
+    {
+      "link": "https://musecap.com/",
+      "source": "musecap.com",
+      "title": "Muse Capital \u2014 Private Wealth & Multi-Family Office",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQxQg9mIy6trJzX37Ysw3M5vgRC5bJaB09dKskqp7fiy2iHJD66",
+      "position": 2,
+      "domain": "musecap.com",
+      "wayback": null
+    },
+    {
+      "link": "https://sola.network/article/dont-miss-the-mountains/",
+      "source": "SOLA Network",
+      "title": "Don't Miss The Mountains - SOLA Network",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQC2KJgz4vD7vhy9_5RFFD5br0DW_YuB3O3C_7IM0hy9AzeFvLX",
+      "position": 3,
+      "domain": "sola.network",
+      "wayback": null
+    },
+    {
+      "link": "https://www.luxurydestinationsparkcity.com/",
+      "source": "www.luxurydestinationsparkcity.com",
+      "title": "Luxury Vacation Rentals in Park City, Utah | Luxury Destinations",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcShLPCnFK_bfnzO-mLMPIWALD4-bhB5J_EhZyWMqTvFEnbJwYv8",
+      "position": 4,
+      "domain": "www.luxurydestinationsparkcity.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.facebook.com/unsplash/photos/951853214955457/",
+      "source": "Unsplash - Unsplash added a new photo.",
+      "title": "Unsplash - Unsplash added a new photo.",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR_SBo0S77Yj58K13wpRA8aY59mmD7hBQ2wO3zjpADalguM-Hcz",
+      "position": 5,
+      "domain": "www.facebook.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.abidingwaters.org/events/",
+      "source": "Abiding Waters",
+      "title": "Events \u2013 Abiding Waters",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlR8EIKDfrQXkXyzTsCya0dle5m-wVWOzXL5sX9BproxBD5i1j",
+      "position": 6,
+      "domain": "www.abidingwaters.org",
+      "wayback": null
+    },
+    {
+      "link": "https://everestpsychandwellness.com/services",
+      "source": "Everest Functional Psychiatry and Wellness",
+      "title": "Services \u2014 Everest Functional Psychiatry and Wellness",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQZYKxlvvSDSLNDSdjnqXi2fJiCtyzRsKz-Xt1GLgZtj3goWGtU",
+      "position": 7,
+      "domain": "everestpsychandwellness.com",
+      "wayback": null
+    },
+    {
+      "link": "https://saltyswatersports.com/blog/sunset-cruise-fort-pierce-jensen-beach-romantic-family",
+      "source": "Salty's Water Sports",
+      "title": "Sunset Cruises in Fort Pierce & Jensen Beach: Romantic ...",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT7jhk2BI-qKbbcidMMsrziaTnB_hWtJqRzz0EyNFNH35WE6VmS",
+      "position": 8,
+      "domain": "saltyswatersports.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.guidezone.co/about",
+      "source": "Guidezone",
+      "title": "About Guidezone | Meet Our Team & Mountain Guides",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTLLIOxVqjNz1ObgCG50kV8SCG_L_zGWnXHLGWCLRlfP9CtQgiE",
+      "position": 9,
+      "domain": "www.guidezone.co",
+      "wayback": null
+    },
+    {
+      "link": "https://www.ltol.com/",
+      "source": "www.ltol.com",
+      "title": "LTOL \u2014 Managed IT, Web Design & AI for Small Businesses",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS1ObWMao2ah9pi4UXLnAg-EW8jOK5zEVwTegOuEKZXzIkQMmsl",
+      "position": 10,
+      "domain": "www.ltol.com",
+      "wayback": null
+    },
+    {
+      "link": "https://play.google.com/store/apps/dev?id=6995017150216087173",
+      "source": "Google Play",
+      "title": "Android Apps by Mele Apps on Google Play",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcR41UEG82Zdnt7lJLJkyUDF-PCt9V4KTsCPdMh4d-Wgm6DI0MuX",
+      "position": 11,
+      "domain": "play.google.com",
+      "wayback": null
+    },
+    {
+      "link": "https://everpeakcap.com/approach",
+      "source": "Everpeak Capital Group",
+      "title": "Approach \u2014 Everpeak Capital Group",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTENDRqAbZI9eh_pvBYGWzz0_RFmRQcohFt1rzqbhAjjw6-uRQD",
+      "position": 12,
+      "domain": "everpeakcap.com",
+      "wayback": null
+    },
+    {
+      "link": "https://rpts.essexcountyny.gov/village-of-lake-placid-tax-rolls-2025/",
+      "source": "Essex County Real Property Tax Services - Essex County, New York",
+      "title": "Village of Lake Placid Tax Rolls 2025 - Real Property Tax ...",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ1jbsUe2TYFoHTOTew-hSTiUMTc9lSqI_kOxf2hs4ibhV_DPiz",
+      "position": 13,
+      "domain": "rpts.essexcountyny.gov",
+      "wayback": null
+    },
+    {
+      "link": "https://ark-ui.com/docs/components/image-cropper",
+      "source": "Ark UI",
+      "title": "Image Cropper | Ark UI",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQ9QT9XnYwnegWvA7LBxmC_YVhcfUNosvsQhVKJfZ4ROq1j4a9t",
+      "position": 14,
+      "domain": "ark-ui.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.instagram.com/p/Csd2pysJ2cn/",
+      "source": "Instagram",
+      "title": "\u30c6\u30b0\u30bf\u30f3\u30e9\u30fc\u30e1\u30f3 #\u3082\u308a\u3061\u3083\u3093#\u4e09\u30ce\u8f2a\u30b0\u30eb\u30e1 #\u4e09\u30ce\u8f2a #\u30e9\u30fc\u30e1\u30f3 ...",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRKRa24WVpHaekGb0sHlrIqZSKkEs0A6mQz1eku98CH-rIDeLr4",
+      "position": 15,
+      "domain": "www.instagram.com",
+      "wayback": null
+    },
+    {
+      "link": "https://jennifermaxsonassociates.com/high-performance-value-creation-teams/",
+      "source": "Jennifer Maxson & Associates",
+      "title": "Why You Should Transition from High Performance to Value ...",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTc0uYA0ZIgC6SF1kJkunAPo-LLUjMAY1is1KWv2VwwSFn5vKRF",
+      "position": 16,
+      "domain": "jennifermaxsonassociates.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.petrinilaw.com/accomplishments",
+      "source": "Petrini & Associates, P.C.",
+      "title": "Accomplishments \u2014 Petrini & Associates, P.C.",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRhsGCbThfTwerLktCEoGL3FwCn3cfCnENl3TLIxGgQvqo7yNM9",
+      "position": 17,
+      "domain": "www.petrinilaw.com",
+      "wayback": null
+    },
+    {
+      "link": "https://essenceandtrove.com/find-us",
+      "source": "Essence & Trove",
+      "title": "Find Us | Essence & Trove",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTDNVL1tphxhtW0slVIYIs2Aj0W-_c4Y3v10eXIIKi-9Mys0usI",
+      "position": 18,
+      "domain": "essenceandtrove.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.mindfulcounselingidaho.com/faqs",
+      "source": "Mindful Counseling LLC",
+      "title": "FAQs \u2014 Mindful Counseling LLC",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRpYSFSR0vzjP9VpHs2ZTck_9-qEbulTlwXciUpynyQ9PvxLt9-",
+      "position": 19,
+      "domain": "www.mindfulcounselingidaho.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.cinegration.com/home-automation-consultation-request",
+      "source": "Cinegration",
+      "title": "Home Automation Consultation Request",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTBx77nwD7nEq9l3K8-0ZeAhYOSTQl9uNRXp3jIXJ1-7Tn8B3Is",
+      "position": 20,
+      "domain": "www.cinegration.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.odysseytherapies.com/careers",
+      "source": "Odyssey Pediatric Therapy Specialists",
+      "title": "Careers \u2014 Odyssey Pediatric Therapy Specialists",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcRvLeYCyX6cuzOmg36fVhB5QB0xOwYF8_on3nstBe6iJy3zxvDH",
+      "position": 21,
+      "domain": "www.odysseytherapies.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.linkedin.com/posts/kevinmease_farm-stay-near-austin-the-farm-texas-in-activity-7374515199078256640-Wf-r",
+      "source": "LinkedIn",
+      "title": "Farm Stay Near Austin | The Farm Texas in Hill Country ...",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcT6RdrSRylCZ990lcWPFV8zAZnaodIX2rfw9W5L8ME3PpXukO1r",
+      "position": 22,
+      "domain": "www.linkedin.com",
+      "wayback": null
+    },
+    {
+      "link": "https://wolfbox.com/blogs/news/2026-cub-weekender-lightweight-rear-fold-camper-targets-off-road-adventure-market",
+      "source": "wolfbox",
+      "title": "2026 CUB Weekender: Lightweight Rear-Fold Camper Targets Off ...",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcR0-y4bNiVjG-dA_RHeMMvwHoRPYNAZR9doqaA6C98fRbNhlBRE",
+      "position": 23,
+      "domain": "wolfbox.com",
+      "wayback": null
+    },
+    {
+      "link": "https://trendmentalhealth.com/",
+      "source": "trendmentalhealth.com",
+      "title": "Trend Mental Health and Wellness",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTPgux7gllmsh3nfAlqyOwGBrSHCwRb-zIOEc5GPINPwKoXzTI5",
+      "position": 24,
+      "domain": "trendmentalhealth.com",
+      "wayback": null
+    },
+    {
+      "link": "https://thinke.org/blog/spirit-god-gives-us",
+      "source": "Think Eternity",
+      "title": "The Spirit God Gives Us in Difficult Times Like These",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSVaxu9hYbi1sh_mARmJoM-0OOtuo0X5VZaBc2DXBAzQKkdpCyv",
+      "position": 25,
+      "domain": "thinke.org",
+      "wayback": null
+    },
+    {
+      "link": "https://octet.design/colors/palette/majestic-mountains-color-palette-1732778457/",
+      "source": "Octet Design Studio",
+      "title": "Majestic Mountains Color Palette, Combinations & Schemes ...",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcTgX-zrZISoonpdVinmxfZHJB6QMeteC_KbAZUFT98R99LF-tHi",
+      "position": 26,
+      "domain": "octet.design",
+      "wayback": null
+    },
+    {
+      "link": "https://www.trespcs.com/business-dissolution",
+      "source": "Tresp Corporate Services",
+      "title": "WY Business Dissolution \u2014 Tresp Corporate Services",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTeyfJ334-mCstp7Rl1CI35_BkpLOGH31zE-2fVVz7RYeyvVgwr",
+      "position": 27,
+      "domain": "www.trespcs.com",
+      "wayback": null
+    },
+    {
+      "link": "https://doeschergroup.com/privacy-policy",
+      "source": "Doescher Group",
+      "title": "Privacy Policy \u2014 Doescher Group",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcT9bX5uHqfY_TabD_cZroolHh158C4KNJpMGXSVQyJb_FWqF5eT",
+      "position": 28,
+      "domain": "doeschergroup.com",
+      "wayback": null
+    },
+    {
+      "link": "https://bestnationalparkstovisit.us/blog/",
+      "source": "Best National Parks to Visit in 2026",
+      "title": "National Parks Blog \u2014 Trip Reports & Expert Tips (2026)",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTHxKShocrebPOXvOtnqKPxHCt0qGIApHCsf5qSgIMsqoo1Tfg0",
+      "position": 29,
+      "domain": "bestnationalparkstovisit.us",
+      "wayback": null
+    },
+    {
+      "link": "https://www.kwboattours.com/best-bachelor-and-bachelorette-boat-party-ideas-in-bar-harbor-acadia/",
+      "source": "KW Boat Tours",
+      "title": "Best Bachelor and Bachelorette Boat Party Ideas in Bar ...",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcTBPx6Y9ZpnFGAQIfWFpbqyNkfRdiwpiyy6MrE88vBk_BXhn4LP",
+      "position": 30,
+      "domain": "www.kwboattours.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.kellisonpsychology.com/contact",
+      "source": "Kellison Psychology",
+      "title": "Contact | Schedule Your Consultation Today \u2014 Kellison Psychology",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcS_1sJboOwQMKzT0OXXheyOg79_NEDZOq7863PfzwX7yw-re1gm",
+      "position": 31,
+      "domain": "www.kellisonpsychology.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.counselingwellbeing.com/therapists-who-take-premera-seattle/",
+      "source": "Counseling Services for Wellbeing",
+      "title": "Therapists Who Take Premera | Counseling Wellbeing",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRGODTMasZxlRdR2peBsVIZiNWNU3fJhyDfp3GLwwT_mu3hMfCC",
+      "position": 32,
+      "domain": "www.counselingwellbeing.com",
+      "wayback": null
+    },
+    {
+      "link": "https://sofiamileti.com/wellness-chef",
+      "source": "Sofia Mileti",
+      "title": "Wellness Chef \u2014 Sofia Mileti",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTF03d8UvLEaFvk3-8eZ_qYrhQmsd0X9KcGx_XTLndIef8BaBoB",
+      "position": 33,
+      "domain": "sofiamileti.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.butlerbureau.eu/en/hauspersonal-st-johann-im-pongau",
+      "source": "Butler Bureau",
+      "title": "Household staff in St. Johann im Pongau | Butler ...",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRe4G1TyF6LyGdHPJuwzRkYG_Rt-n2CiunDQIjjUFq57OlB6LGR",
+      "position": 34,
+      "domain": "www.butlerbureau.eu",
+      "wayback": null
+    },
+    {
+      "link": "https://alfredconcierge.app/catalog/hotels/ranch-at-rock-creek-montana",
+      "source": "Alfred Concierge",
+      "title": "The Ranch at Rock Creek Montana \u2014 Luxury Hotel Philipsburg ...",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcSjMIUPTbvzVAry308_65AHUAdk5gATDqCdp2Uf90UF6lVehRXo",
+      "position": 35,
+      "domain": "alfredconcierge.app",
+      "wayback": null
+    },
+    {
+      "link": "https://www.instagram.com/reel/DIt2kwzi7U6/",
+      "source": "Instagram",
+      "title": "Component",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTg7USlpvlRxEBoRAU0lHCk0AHjofzT6APfS8mjtuvZRnSP-ste",
+      "position": 36,
+      "domain": "www.instagram.com",
+      "wayback": null
+    },
+    {
+      "link": "https://medium.com/@ha3852959/title-majestic-mountains-exploring-the-beauty-and-grandeur-of-earths-peaks-da4602a945d7",
+      "source": "Medium",
+      "title": "Title: Majestic Mountains: Exploring the Beauty and Grandeur ...",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTsg2oSizMcMc_4lwVO3io7g3tnPu2k9s1ZTBb1BAR8Q2_mw-or",
+      "position": 37,
+      "domain": "medium.com",
+      "wayback": null
+    },
+    {
+      "link": "https://anitawinglee.com/blog/what-i-learned-from-4-years-of-doing-a-master-of-divinity",
+      "source": "Anita Wing Lee",
+      "title": "What I learned from 4 years of doing a Master Of Divinity ...",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcQooaduAgRI5sNB-pPs70lRm_7i_troX_DC0Gz9GvJ82Xa6ueHR",
+      "position": 38,
+      "domain": "anitawinglee.com",
+      "wayback": null
+    },
+    {
+      "link": "https://nettify.no/en/",
+      "source": "Nettify",
+      "title": "AI website builder \u2013 build your website | Nettify",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcSNtVz-tgnew6MlJSEE5Lqg7OvCRjtTYE71pibyQIp4dog2Gahw",
+      "position": 39,
+      "domain": "nettify.no",
+      "wayback": null
+    },
+    {
+      "link": "https://www.aworldtotravel.com/one-week-in-switzerland-itinerary/",
+      "source": "A World to Travel",
+      "title": "Ultimate One Week In Switzerland Itinerary For Mountain Lovers",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTOMawzB6CFfJF_Jp3-JkHzsgLQyQ_zJcp7HnTRSZmQUu4IxwAl",
+      "position": 40,
+      "domain": "www.aworldtotravel.com",
+      "wayback": null
+    },
+    {
+      "link": "https://luxaterra.com/destinations/europe/switzerland/",
+      "source": "Luxa Terra",
+      "title": "Switzerland \u00b7 luxa terra",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcT9mglwti6atHl-EcD9teVxhGzmwYtDhaEPTHRrzH80bAV6cgRC",
+      "position": 41,
+      "domain": "luxaterra.com",
+      "wayback": null
+    },
+    {
+      "link": "https://bereanopc.org/",
+      "source": "bereanopc.org",
+      "title": "Berean OPC",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcRHW64lePsndDFjawOYURap4mxvNWIeaglxPYzd9HACuKaOj3eC",
+      "position": 42,
+      "domain": "bereanopc.org",
+      "wayback": null
+    },
+    {
+      "link": "https://www.cloudtrace.com.au/",
+      "source": "www.cloudtrace.com.au",
+      "title": "Cloudtrace",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRG9u1-mIEdx7kX0H-A9R3va1EgqZFc2fNDVOdMQ9zKzDzQaww-",
+      "position": 43,
+      "domain": "www.cloudtrace.com.au",
+      "wayback": null
+    },
+    {
+      "link": "https://affordablepsych.org/blog",
+      "source": "Affordable Psych",
+      "title": "Blog | Affordable Psych",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRVlS_TIHyqHnq5WUHDFMBmO7bLNGaMGnXDzBb1PHnWPaWaEbGF",
+      "position": 44,
+      "domain": "affordablepsych.org",
+      "wayback": null
+    },
+    {
+      "link": "https://mycahomeloan.com/bay-area-home-buying-guide-financing-2026/",
+      "source": "DiVita Home Finance",
+      "title": "2026 Bay Area Home Buying Guide: Financing $1M+ Homes | DiVita",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSvB06-5FpNGGuSQqN9N1YAlbhT6DgVXFGzTUVOwe4Bu3OYZN6s",
+      "position": 45,
+      "domain": "mycahomeloan.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.tibettravel.com/tours/tnb-06",
+      "source": "Tibet Travel",
+      "title": "14 Days Tibet & Nepal & Bhutan Classic Tour | 14-Day Tibet ...",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTuZsoiymhMJCOBGMBUNCLuYkFpkZbuuHG4BSABHE414ayY2DOX",
+      "position": 46,
+      "domain": "www.tibettravel.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.guidenow.nz/guides",
+      "source": "GuideNow",
+      "title": "Southern Lakes Travel Guides | GuideNow",
+      "thumbnail": "https://encrypted-tbn3.gstatic.com/images?q=tbn:ANd9GcRCl_kbo2Y8DAMwMfoGHTKOcGUJtlbwkVaT5NKCB8ZcFv5ZEur7",
+      "position": 47,
+      "domain": "www.guidenow.nz",
+      "wayback": null
+    },
+    {
+      "link": "https://www.chauffeurservicesnyc.com/locations/westchester",
+      "source": "Chauffeur Services NYC",
+      "title": "Westchester Car Service | Executive Transportation in ...",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTEGOt50lI4nNpk3M0qa5cLKvI1xJG7xzr_46B_rxwafebqoxpr",
+      "position": 48,
+      "domain": "www.chauffeurservicesnyc.com",
+      "wayback": null
+    },
+    {
+      "link": "https://vedrapartners.com/",
+      "source": "vedrapartners.com",
+      "title": "Vedra Partners \u2014 Institutional Quality. Family Alignment ...",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQMBcLq6dmIFtOM0AxxVaXLLmso6ELrp7yh-Ywzw36zsXmL8fDy",
+      "position": 49,
+      "domain": "vedrapartners.com",
+      "wayback": null
+    },
+    {
+      "link": "https://protectourwinters.uk/blog",
+      "source": "Protect Our Winters UK",
+      "title": "POW UK Blog - Protect Our Winters UK",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQ0ZXcYZMbh2bP0DR-dE2Y3YpQ71bgDi-5SoAu5A1cIKcLaoMjw",
+      "position": 50,
+      "domain": "protectourwinters.uk",
+      "wayback": null
+    },
+    {
+      "link": "https://tixarena.com/event/us/prospect-park-celebrate-brooklyn-festival-mnqcdkbk",
+      "source": "TIXARENA",
+      "title": "Prospect Park Celebrate Brooklyn! Festival - TIXARENA",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSvkDtGcF-Sc2TX2UgDnP9nY6kZvYwub2ofd3g7gTiC9JNMlvFR",
+      "position": 51,
+      "domain": "tixarena.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.centraloregoninnovation.com/about",
+      "source": "Central Oregon Innovation Network",
+      "title": "About Us - Central Oregon Innovation Network",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcT3KCy0-ZRQL75bxytXaBO_6GscvHouYh0IbCcS_muQaOXTYG1K",
+      "position": 52,
+      "domain": "www.centraloregoninnovation.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.riseaboveitmarketing.com/",
+      "source": "www.riseaboveitmarketing.com",
+      "title": "Strategic Marketing Solutions | Rise Above It Marketing",
+      "thumbnail": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTQGkJJH9FlBJRM473OPa6jxQqct-2Q2b2JbWl_uR9Y8j_x0BJH",
+      "position": 53,
+      "domain": "www.riseaboveitmarketing.com",
+      "wayback": null
+    },
+    {
+      "link": "https://lakewayinsurance.co/get-a-quote",
+      "source": "Baker Insurance Group",
+      "title": "get-a-quote | Lakeway | Baker Insurance Group",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcS9qbV__6WGCG2g1jJejZ58qacoLkrHV6GQsSXHM5GyDtzpAf-e",
+      "position": 54,
+      "domain": "lakewayinsurance.co",
+      "wayback": null
+    },
+    {
+      "link": "https://www.tourants.com/en/pois/rhine-falls-zurich",
+      "source": "Tourants",
+      "title": "Rhine Falls Zurich - Tourants",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSKDWoxgw7eiMgI5CRipTHk_pqaNZ_cNA0xkcV9q_Jk2GCv_Cb6",
+      "position": 55,
+      "domain": "www.tourants.com",
+      "wayback": null
+    },
+    {
+      "link": "https://okeylocksmith.com/locksmith-near-me/the-village",
+      "source": "Okey Locksmith",
+      "title": "Locksmith The Village OKC | Okey Locksmith",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQPMItF0zMWAeDKNtoSVQV4KwZWaZTRe3IHGuLpkMDmVXLgSqNU",
+      "position": 56,
+      "domain": "okeylocksmith.com",
+      "wayback": null
+    },
+    {
+      "link": "https://e4s.center/news/we-believe-in-the-power-of-ideas-to-transform-society-say-leaders-at-e4s-annual-summit-2021/",
+      "source": "E4S Center's",
+      "title": "We believe in the power of ideas to transform society' say ...",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcQNg5aXGAT0y_LC_Eg2zYoaNtkgC9XbhEnyiE7guUbqlL3JfD67",
+      "position": 57,
+      "domain": "e4s.center",
+      "wayback": null
+    },
+    {
+      "link": "https://www.hioffsite.com/destinations",
+      "source": "HI OFFSITE",
+      "title": "Destinations",
+      "thumbnail": "https://encrypted-tbn2.gstatic.com/images?q=tbn:ANd9GcS5x8zCFnG0GZoMNZf3pJccIf8SRNC4mOa7sVIupOvfHE5lKplu",
+      "position": 58,
+      "domain": "www.hioffsite.com",
+      "wayback": null
+    },
+    {
+      "link": "https://www.massivescaleconsulting.com/contact",
+      "source": "Massive Scale Consulting",
+      "title": "Contact Cybersecurity Consultants \u2014 Massive Scale Consulting",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcTHQKu6uJKGEuPSDLhbHKA9VeVWtEAvROLW9abOHLcx7JHDYprC",
+      "position": 59,
+      "domain": "www.massivescaleconsulting.com",
+      "wayback": null
+    },
+    {
+      "link": "https://destiny.ie/elements/destiny-filter/",
+      "source": "Destiny Elements",
+      "title": "Filter Element - Destiny Elements",
+      "thumbnail": "https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcQbLgWo-1zPrsMHh2MqRLKNnTRlLF7T7VdY5U3a0rNsuPiX5_zs",
+      "position": 60,
+      "domain": "destiny.ie",
+      "wayback": null
+    }
+  ],
+  "earliest_appearance": null,
+  "error": null,
+  "api_used": true
+}

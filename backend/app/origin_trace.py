@@ -24,11 +24,12 @@ SerpApi Google Lens API:
 
 Wayback Machine Availability API:
   - Endpoint: https://archive.org/wayback/available?url=<url>
-  - No API key required, no rate limit
+  - No API key required, rate-limited (respect with delays)
   - Returns: archived_snapshots.closest.timestamp (yyyyMMddHHmmss)
 """
 
 import os
+import time
 import json
 import hashlib
 import logging
@@ -52,6 +53,9 @@ WAYBACK_TIMEOUT = 10
 
 # Maximum number of visual matches to chain through Wayback
 MAX_WAYBACK_LOOKUPS = 5
+
+# Delay between Wayback requests to avoid HTTP 429 rate limiting
+WAYBACK_DELAY_SECS = 1.5
 
 
 def _get_serpapi_key() -> Optional[str]:
@@ -189,6 +193,10 @@ def _chain_wayback_lookups(visual_matches: list[dict]) -> list[dict]:
     for i, match in enumerate(visual_matches[:MAX_WAYBACK_LOOKUPS]):
         link = match["link"]
         domain = urlparse(link).netloc
+
+        # Rate-limit Wayback requests to avoid HTTP 429
+        if i > 0:
+            time.sleep(WAYBACK_DELAY_SECS)
 
         wayback = _query_wayback(link)
         enriched_match = {
