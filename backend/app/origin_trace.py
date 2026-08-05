@@ -342,3 +342,98 @@ def get_origin_trace_summary(origin_trace: dict) -> dict:
         "earliest_domain": None,
         "match_count": origin_trace.get("match_count", 0),
     }
+
+
+# ---------------------------------------------------------------------------
+# Frozen Contract Adapter (Section 2 → OriginTraceEvidence)
+# ---------------------------------------------------------------------------
+#
+# STAGED ASSEMBLY NOTE:
+# query_origin_trace() returns an internal shape optimized for the live
+# pipeline ({has_matches, match_count, visual_matches, earliest_appearance,
+# error, api_used}). The frozen Section 2 contract defines a different
+# public shape ({serpapi_status, wayback_status, results}) via the
+# OriginTraceEvidence Pydantic model in schemas.py.
+#
+# to_frozen_contract() maps the internal shape → frozen contract shape.
+# This adapter is called by M7's Evidence Aggregation stage. It is NOT
+# a contract violation — just staged assembly: M5 builds the raw data,
+# M7 maps it into the frozen shape.
+#
+# MAPPING:
+#   internal.api_used + internal.error → serpapi_status (success|error|not_called)
+#   internal.earliest_appearance != None → wayback_status (success|error|not_called)
+#   internal.visual_matches[].{link, domain, wayback.datetime} → results[]
+#
+# RULE 3 MATCHING CLARIFICATION:
+# The plan's wording "pHash match indexed > 1 year ago" does NOT mean
+# M3's local compute_phash()/is_phash_match() is re-run against
+# downloaded copies of SerpApi's matched images. Rule 3 in M6 should
+# be implemented as:
+#   "SerpApi Google Lens found a visual match AND its corresponding
+#    Wayback timestamp is more than 1 year old"
+# SerpApi's own visual matching algorithm replaces the plan's literal
+# "pHash match" language. Local pHash (M3) is used only for
+# duplicate_detection against the receipts database, not for origin trace.
+# ---------------------------------------------------------------------------
+
+def to_frozen_contract(internal: dict) -> dict:
+    """Map internal query_origin_trace() result → frozen OriginTraceEvidence shape.
+
+    The returned dict matches the OriginTraceEvidence Pydantic model
+    from schemas.py (Section 2 frozen contract):
+        serpapi_status: "success" | "timeout" | "error" | "not_called"
+        wayback_status: "success" | "timeout" | "error" | "not_called"
+        results: [{url, domain, earliest_wayback_timestamp}, ...]
+
+    Args:
+        internal: Return value from query_origin_trace().
+
+    Returns:
+        Dict conforming to OriginTraceEvidence shape.
+    """
+    # --- serpapi_status ---
+    if not internal.get("api_used", False):
+        error_msg = internal.get("error", "")
+        if "not configured" in str(error_msg):
+            serpapi_status = "not_called"
+        elif "timeout" in str(error_msg).lower() or "timed out" in str(error_msg).lower():
+            serpapi_status = "timeout"
+        else:
+            serpapi_status = "error"
+    else:
+        serpapi_status = "success"
+
+    # --- wayback_status ---
+    has_any_wayback = False
+    for match in internal.get("visual_matches", []):
+        if match.get("wayback"):
+            has_any_wayback = True
+            break
+
+    if not internal.get("api_used", False):
+        wayback_status = "not_called"
+    elif has_any_wayback:
+        wayback_status = "success"
+    elif internal.get("has_matches", False):
+        # SerpApi found matches but Wayback had no data for any of them
+        wayback_status = "error"
+    else:
+        wayback_status = "not_called"
+
+    # --- results ---
+    results = []
+    for match in internal.get("visual_matches", []):
+        wb = match.get("wayback")
+        results.append({
+            "url": match.get("link", ""),
+            "domain": match.get("domain", ""),
+            "earliest_wayback_timestamp": wb.get("datetime") if wb else None,
+        })
+
+    return {
+        "serpapi_status": serpapi_status,
+        "wayback_status": wayback_status,
+        "results": results,
+    }
+

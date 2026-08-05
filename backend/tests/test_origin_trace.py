@@ -27,6 +27,7 @@ from app.origin_trace import (
     _safe_fallback,
     query_origin_trace,
     get_origin_trace_summary,
+    to_frozen_contract,
 )
 
 
@@ -358,3 +359,225 @@ class TestOriginTraceSummary:
         assert summary["has_online_matches"] is False
         assert summary["earliest_timestamp"] is None
         assert summary["match_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Specific Failure Mode Tests (429, 5xx, Timeout)
+# ---------------------------------------------------------------------------
+
+class TestSpecificFailureModes:
+    """Verify that 429, 500, 503, and timeout all produce the same
+    catch-log-degrade behavior as the 401 case (safe fallback with error).
+
+    All HTTP error status codes go through _query_serpapi_lens() which raises
+    ValueError for any non-200, caught by query_origin_trace()'s except
+    block. Timeout raises requests.exceptions.Timeout, also caught. All
+    produce the same safe fallback dict with error string — identical
+    degradation behavior.
+    """
+
+    @patch("app.origin_trace._get_serpapi_key", return_value="test_key")
+    @patch("app.origin_trace.requests.get")
+    def test_http_429_rate_limit(self, mock_get, mock_key):
+        """HTTP 429 (Too Many Requests) returns safe fallback."""
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        mock_response.text = "Rate limit exceeded"
+        mock_get.return_value = mock_response
+
+        result = query_origin_trace("https://example.com/image.jpg")
+
+        assert result["has_matches"] is False
+        assert result["api_used"] is False
+        assert result["error"] is not None
+        assert "429" in result["error"]
+
+    @patch("app.origin_trace._get_serpapi_key", return_value="test_key")
+    @patch("app.origin_trace.requests.get")
+    def test_http_500_server_error(self, mock_get, mock_key):
+        """HTTP 500 (Internal Server Error) returns safe fallback."""
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_response.text = "Internal Server Error"
+        mock_get.return_value = mock_response
+
+        result = query_origin_trace("https://example.com/image.jpg")
+
+        assert result["has_matches"] is False
+        assert result["api_used"] is False
+        assert result["error"] is not None
+        assert "500" in result["error"]
+
+    @patch("app.origin_trace._get_serpapi_key", return_value="test_key")
+    @patch("app.origin_trace.requests.get")
+    def test_http_503_service_unavailable(self, mock_get, mock_key):
+        """HTTP 503 (Service Unavailable) returns safe fallback."""
+        mock_response = MagicMock()
+        mock_response.status_code = 503
+        mock_response.text = "Service Unavailable"
+        mock_get.return_value = mock_response
+
+        result = query_origin_trace("https://example.com/image.jpg")
+
+        assert result["has_matches"] is False
+        assert result["api_used"] is False
+        assert result["error"] is not None
+        assert "503" in result["error"]
+
+    @patch("app.origin_trace._get_serpapi_key", return_value="test_key")
+    @patch("app.origin_trace.requests.get")
+    def test_request_timeout(self, mock_get, mock_key):
+        """requests.Timeout (>SERPAPI_TIMEOUT) returns safe fallback."""
+        import requests as req
+        mock_get.side_effect = req.exceptions.Timeout(
+            "Connection to serpapi.com timed out. (connect timeout=15)"
+        )
+
+        result = query_origin_trace("https://example.com/image.jpg")
+
+        assert result["has_matches"] is False
+        assert result["api_used"] is False
+        assert result["error"] is not None
+        assert "timed out" in result["error"].lower() or "timeout" in result["error"].lower()
+
+    @patch("app.origin_trace._get_serpapi_key", return_value="test_key")
+    @patch("app.origin_trace.requests.get")
+    def test_all_failure_modes_share_same_shape(self, mock_get, mock_key):
+        """All failure modes produce identical dict structure (same keys)."""
+        import requests as req
+
+        failure_modes = [
+            # (side_effect, response_factory)
+            (None, lambda: MagicMock(status_code=401, text="Unauthorized")),
+            (None, lambda: MagicMock(status_code=429, text="Rate limited")),
+            (None, lambda: MagicMock(status_code=500, text="Server error")),
+            (req.exceptions.Timeout("timeout"), None),
+            (Exception("Connection refused"), None),
+        ]
+
+        results = []
+        for side_effect, response_factory in failure_modes:
+            if side_effect:
+                mock_get.side_effect = side_effect
+            else:
+                mock_get.side_effect = None
+                mock_get.return_value = response_factory()
+
+            result = query_origin_trace("https://example.com/image.jpg")
+            results.append(result)
+
+        # All must have identical keys
+        expected_keys = {"has_matches", "match_count", "visual_matches",
+                         "earliest_appearance", "error", "api_used"}
+        for r in results:
+            assert set(r.keys()) == expected_keys
+            assert r["has_matches"] is False
+            assert r["api_used"] is False
+            assert r["error"] is not None
+
+
+# ---------------------------------------------------------------------------
+# Frozen Contract Adapter Tests
+# ---------------------------------------------------------------------------
+
+class TestFrozenContractAdapter:
+    """Tests for to_frozen_contract() mapping internal → Section 2 shape."""
+
+    def test_successful_pipeline_maps_correctly(self):
+        """Successful SerpApi + Wayback should map to success statuses."""
+        internal = {
+            "has_matches": True,
+            "match_count": 3,
+            "visual_matches": [
+                {"link": "https://reuters.com/a", "domain": "reuters.com",
+                 "wayback": {"datetime": "2019-03-15T12:00:00+00:00", "timestamp": "20190315120000"}},
+                {"link": "https://apnews.com/b", "domain": "apnews.com",
+                 "wayback": None},
+                {"link": "https://reddit.com/c", "domain": "reddit.com",
+                 "wayback": {"datetime": "2024-01-01T00:00:00+00:00", "timestamp": "20240101000000"}},
+            ],
+            "earliest_appearance": {"link": "https://reuters.com/a"},
+            "error": None,
+            "api_used": True,
+        }
+        frozen = to_frozen_contract(internal)
+
+        assert frozen["serpapi_status"] == "success"
+        assert frozen["wayback_status"] == "success"
+        assert len(frozen["results"]) == 3
+        assert frozen["results"][0]["url"] == "https://reuters.com/a"
+        assert frozen["results"][0]["domain"] == "reuters.com"
+        assert frozen["results"][0]["earliest_wayback_timestamp"] == "2019-03-15T12:00:00+00:00"
+        assert frozen["results"][1]["earliest_wayback_timestamp"] is None
+
+    def test_no_api_key_maps_to_not_called(self):
+        """Missing API key → serpapi_status=not_called."""
+        internal = _safe_fallback()
+        internal["error"] = "SERPAPI_API_KEY not configured"
+        frozen = to_frozen_contract(internal)
+
+        assert frozen["serpapi_status"] == "not_called"
+        assert frozen["wayback_status"] == "not_called"
+        assert frozen["results"] == []
+
+    def test_api_error_maps_to_error(self):
+        """HTTP 429/5xx → serpapi_status=error."""
+        internal = _safe_fallback()
+        internal["error"] = "SerpApi returned HTTP 429: Rate limited"
+        frozen = to_frozen_contract(internal)
+
+        assert frozen["serpapi_status"] == "error"
+
+    def test_timeout_maps_to_timeout(self):
+        """Timeout → serpapi_status=timeout."""
+        internal = _safe_fallback()
+        internal["error"] = "Connection timed out after 15s"
+        frozen = to_frozen_contract(internal)
+
+        assert frozen["serpapi_status"] == "timeout"
+
+    def test_matches_but_no_wayback(self):
+        """SerpApi matches with no Wayback hits → wayback_status=error."""
+        internal = {
+            "has_matches": True,
+            "match_count": 2,
+            "visual_matches": [
+                {"link": "https://example.com/a", "domain": "example.com", "wayback": None},
+                {"link": "https://example.com/b", "domain": "example.com", "wayback": None},
+            ],
+            "earliest_appearance": None,
+            "error": None,
+            "api_used": True,
+        }
+        frozen = to_frozen_contract(internal)
+
+        assert frozen["serpapi_status"] == "success"
+        assert frozen["wayback_status"] == "error"
+
+    def test_contract_keys_match_pydantic_model(self):
+        """Frozen output keys must match OriginTraceEvidence model fields."""
+        internal = _safe_fallback()
+        frozen = to_frozen_contract(internal)
+
+        # Keys must be exactly {serpapi_status, wayback_status, results}
+        assert set(frozen.keys()) == {"serpapi_status", "wayback_status", "results"}
+
+    def test_results_item_keys_match_pydantic_model(self):
+        """Each result item must match OriginTraceResult model fields."""
+        internal = {
+            "has_matches": True,
+            "match_count": 1,
+            "visual_matches": [
+                {"link": "https://example.com/a", "domain": "example.com",
+                 "wayback": {"datetime": "2020-01-01T00:00:00+00:00"}},
+            ],
+            "earliest_appearance": None,
+            "error": None,
+            "api_used": True,
+        }
+        frozen = to_frozen_contract(internal)
+
+        # Each result must have exactly {url, domain, earliest_wayback_timestamp}
+        assert len(frozen["results"]) == 1
+        assert set(frozen["results"][0].keys()) == {"url", "domain", "earliest_wayback_timestamp"}
+
