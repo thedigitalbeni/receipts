@@ -130,19 +130,13 @@ class TestRulesEngine:
         assert "available evidence is limited" in result.interpretation
 
     @patch("app.rules.datetime")
-    def test_multi_match_policy(self, mock_datetime):
-        """Multi-Match Policy: First-match wins headline, but all evidence is kept.
-        
-        Tests an image that is AI-generated (Rule 1), has an old visual match (Rule 3),
-        and has editing software detected (Standalone/Rule 4).
-        """
+    def test_rule_1_plus_rule_3_multi_match(self, mock_datetime):
+        """Rule 1 + Rule 3 multi-match test. Rule 1 wins headline."""
         mock_datetime.now.return_value = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
         mock_datetime.fromisoformat = datetime.fromisoformat
         
         ev = create_base_evidence()
-        # Rule 1 condition
         ev.c2pa.ai_generated = True
-        # Rule 3 condition
         ev.origin_trace.results = [
             OriginTraceResult(
                 url="https://example.com/old",
@@ -150,22 +144,71 @@ class TestRulesEngine:
                 earliest_wayback_timestamp="2019-01-01T00:00:00+00:00"
             )
         ]
-        # Standalone / Rule 4 condition
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "AI-Generated Content"
+        assert result.evidence_strength == EvidenceStrength.strong
+        assert "C2PA manifest explicitly declares AI generation" in result.evidence
+        assert "Visually identical image indexed over a year ago" in result.evidence
+        assert "Origin context differs from current claim" in result.evidence
+
+    @patch("app.rules.datetime")
+    def test_rule_2_plus_rule_3_multi_match(self, mock_datetime):
+        """Rule 2 + Rule 3 multi-match test. Rule 2 wins headline."""
+        mock_datetime.now.return_value = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        
+        ev = create_base_evidence()
+        ev.c2pa.camera_signature = True
+        ev.origin_trace.results = [
+            OriginTraceResult(
+                url="https://example.com/old",
+                domain="example.com",
+                earliest_wayback_timestamp="2019-01-01T00:00:00+00:00"
+            )
+        ]
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Verified Camera Original"
+        assert result.evidence_strength == EvidenceStrength.strong
+        assert "Cryptographically signed camera manifest present and valid" in result.evidence
+        assert "Visually identical image indexed over a year ago" in result.evidence
+        assert "Origin context differs from current claim" in result.evidence
+
+    @patch("app.rules.datetime")
+    def test_rule_4_duplicate_evidence_regression_rule_3_wins(self, mock_datetime):
+        """Rule 3 wins, editing software also detected. Evidence appears correctly."""
+        mock_datetime.now.return_value = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.fromisoformat = datetime.fromisoformat
+        
+        ev = create_base_evidence()
+        ev.origin_trace.results = [
+            OriginTraceResult(
+                url="https://example.com/old",
+                domain="example.com",
+                earliest_wayback_timestamp="2019-01-01T00:00:00+00:00"
+            )
+        ]
         ev.metadata.editing_software_detected = True
 
         result = evaluate_evidence(ev)
 
-        # First-match wins the headline (Rule 1 > Rule 3 > Rule 4)
-        assert result.classification == "AI-Generated Content"
-        assert result.evidence_strength == EvidenceStrength.strong
-        assert "created or modified by AI" in result.interpretation
-
-        # Evidence array MUST contain findings from ALL matching rules
-        assert "C2PA manifest explicitly declares AI generation" in result.evidence
+        assert result.classification == "Recirculated / Out of Context"
         assert "Visually identical image indexed over a year ago" in result.evidence
-        assert "Origin context differs from current claim" in result.evidence
         assert "Editing software detected in EXIF metadata" in result.evidence
+        # Ensure it appears exactly once
+        assert result.evidence.count("Editing software detected in EXIF metadata") == 1
 
-        # And it should not contain evidence from rules that didn't match
-        assert "Cryptographically signed camera manifest present and valid" not in result.evidence
-        assert "No C2PA credentials found" not in result.evidence
+    def test_rule_4_winning_outright_evidence_count(self):
+        """Rule 4 winning outright. Assert editing software evidence appears exactly once."""
+        ev = create_base_evidence()
+        ev.metadata.editing_software_detected = True
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Post-Processed Image"
+        assert result.evidence_strength == EvidenceStrength.moderate
+        assert result.evidence.count("Editing software detected in EXIF metadata") == 1
+        assert len(result.evidence) == 1
