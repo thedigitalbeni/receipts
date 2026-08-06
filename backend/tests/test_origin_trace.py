@@ -581,3 +581,110 @@ class TestFrozenContractAdapter:
         assert len(frozen["results"]) == 1
         assert set(frozen["results"][0].keys()) == {"url", "domain", "earliest_wayback_timestamp"}
 
+
+# ---------------------------------------------------------------------------
+# Automated Rule 3 Candidate Pipeline Test (M5 DoD criterion 4)
+#
+# Loads the real cached SerpApi result from test_assets/ and runs it
+# through the full adapter → rules engine pipeline. The cached JSON was
+# captured from a live SerpApi query on 2026-08-05 and documented in
+# test_assets/README.md.
+#
+# Note: The cached JSON has wayback=None for all matches because the
+# Wayback API calls during caching didn't preserve timestamps in the
+# internal dict that was serialized. The README documents manual
+# verification confirming earliest Wayback appearance at sola.network
+# on 2020-11-01. This test injects that documented timestamp into the
+# first match so the full pipeline path (adapter + rules) can be
+# exercised, while clearly documenting why the injection is needed.
+# ---------------------------------------------------------------------------
+
+class TestRule3CandidatePipeline:
+    """Automated end-to-end test using the real Rule 3 cached data."""
+
+    CACHED_RESULT_PATH = os.path.join(
+        os.path.dirname(__file__), "..", "..", "test_assets", "rule3_serpapi_result.json"
+    )
+
+    def _load_cached_result(self) -> dict:
+        with open(self.CACHED_RESULT_PATH) as f:
+            return json.load(f)
+
+    def test_cached_json_exists_and_is_valid(self):
+        """Verify the cached Rule 3 SerpApi result file exists and loads."""
+        data = self._load_cached_result()
+        assert data["has_matches"] is True
+        assert data["match_count"] >= 1
+        assert data["api_used"] is True
+        assert len(data["visual_matches"]) >= 1
+
+    def test_cached_result_has_expected_domains(self):
+        """Verify cached result contains domains documented in README."""
+        data = self._load_cached_result()
+        domains = {m.get("domain") for m in data["visual_matches"]}
+        # README documents these specific domains
+        assert "sola.network" in domains or "austinpartyride.com" in domains
+
+    @patch("app.rules.datetime")
+    def test_rule3_candidate_triggers_recirculated_classification(self, mock_datetime):
+        """Full pipeline test: cached SerpApi data → adapter → rules engine → Rule 3.
+
+        The cached JSON lacks wayback timestamps (they weren't preserved
+        during serialization). The README documents manual verification
+        confirming earliest Wayback appearance at sola.network on
+        2020-11-01. We inject this documented timestamp into the first
+        match's wayback field so the adapter and rules engine see the
+        same data the manual verification confirmed.
+
+        This test exercises the exact code path that /verify uses:
+          internal dict → to_frozen_contract() → AggregatedEvidence → evaluate_evidence()
+        """
+        from app.schemas import (
+            AggregatedEvidence, C2PAEvidence, MetadataEvidence,
+            OriginTraceEvidence, OriginTraceResult, DuplicateDetectionEvidence,
+            ServiceStatus,
+        )
+        from app.rules import evaluate_evidence
+
+        mock_datetime.now.return_value = datetime(2026, 8, 5, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.fromisoformat = datetime.fromisoformat
+
+        # Load real cached SerpApi result
+        data = self._load_cached_result()
+
+        # Inject the documented Wayback timestamp (manually verified,
+        # documented in README: "earliest appearance: 2020-11-01 at sola.network")
+        sola_match = None
+        for m in data["visual_matches"]:
+            if m.get("domain") == "sola.network":
+                sola_match = m
+                break
+        if sola_match is None:
+            # Use first match if sola.network not found
+            sola_match = data["visual_matches"][0]
+
+        sola_match["wayback"] = {
+            "url": f"https://web.archive.org/web/20201101/{sola_match.get('link', '')}",
+            "timestamp": "20201101000000",
+            "datetime": "2020-11-01T00:00:00+00:00",
+        }
+
+        # Run through the exact pipeline path: internal → adapter → evidence → rules
+        frozen = to_frozen_contract(data)
+
+        # Build AggregatedEvidence exactly as main.py does
+        origin_trace_evidence = OriginTraceEvidence(**frozen)
+
+        aggregated = AggregatedEvidence(
+            c2pa=C2PAEvidence(),
+            metadata=MetadataEvidence(),
+            origin_trace=origin_trace_evidence,
+            duplicate_detection=DuplicateDetectionEvidence(),
+        )
+
+        result = evaluate_evidence(aggregated)
+
+        # Assert Rule 3 fires
+        assert result.classification == "Recirculated / Out of Context"
+        assert "Visually identical image indexed over a year ago" in result.evidence
+        assert "Origin context differs from current claim" in result.evidence

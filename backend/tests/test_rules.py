@@ -1,6 +1,9 @@
 import pytest
+import requests
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
+import socket
+from pytest_socket import SocketBlockedError
 
 from app.schemas import (
     AggregatedEvidence,
@@ -212,3 +215,8 @@ class TestRulesEngine:
         assert result.evidence_strength == EvidenceStrength.moderate
         assert result.evidence.count("Editing software detected in EXIF metadata") == 1
         assert len(result.evidence) == 1
+
+    def test_network_is_blocked_by_pytest_socket(self):
+        """Permanent canary test proving pytest-socket enforcement works."""
+        with pytest.raises(SocketBlockedError):
+            requests.get("https://google.com")
