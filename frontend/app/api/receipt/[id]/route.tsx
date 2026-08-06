@@ -261,7 +261,7 @@ export async function GET(
         ],
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error generating image:', error);
     return new Response('Error generating image', { status: 500 });
   }

@@ -109,6 +109,10 @@ export default function ReceiptsPage() {
 
   // ---- API call ----
   const sendToApi = async (file: File | null, url?: string) => {
+    // Implement 60-second timeout using AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
     try {
       const formData = new FormData();
 
@@ -125,7 +129,9 @@ export default function ReceiptsPage() {
       const res = await fetch(`${API_URL}/verify`, {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
 
       if (!res.ok) {
         const errBody = await res.json().catch(() => null);
@@ -136,7 +142,15 @@ export default function ReceiptsPage() {
       setResult(data);
       setAppState('RESULT');
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Network error';
+      clearTimeout(timeoutId);
+      let msg = 'Network error';
+      if (err instanceof Error) {
+        if (err.name === 'AbortError') {
+          msg = 'Verification timed out. The server might be warming up, please try again.';
+        } else {
+          msg = err.message;
+        }
+      }
       setErrorMsg(msg);
       setAppState('ERROR');
     }
