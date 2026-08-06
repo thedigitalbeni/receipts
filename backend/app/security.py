@@ -170,7 +170,7 @@ async def validate_url_content_type(url: str) -> None:
     3. If neither yields Content-Type starting with "image/",
        raise InputValidationError (→ HTTP 400).
     """
-    async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
         content_type = None
 
         # Step 1: Try HEAD
@@ -189,15 +189,15 @@ async def validate_url_content_type(url: str) -> None:
                     headers={"Range": "bytes=0-1023"},
                 )
                 content_type = get_resp.headers.get("content-type", "")
-            except httpx.HTTPError:
+            except httpx.HTTPError as e:
                 raise InputValidationError(
-                    "Could not determine content type of URL"
+                    f"Could not determine content type of URL: {e}"
                 )
 
         # Step 3: Check Content-Type
         if not content_type or not content_type.strip().lower().startswith("image/"):
             raise InputValidationError(
-                "URL must point directly to an image file, not a webpage."
+                f"URL must point directly to an image file, not a webpage. Got: {content_type}"
             )
 
 
@@ -212,7 +212,7 @@ async def download_image_from_url(url: str) -> bytes:
     calling this function. This function enforces the 15 MB size limit
     via streaming to avoid loading oversized files into memory.
     """
-    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
             chunks = []
