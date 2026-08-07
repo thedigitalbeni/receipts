@@ -423,11 +423,18 @@ export default function ReceiptsPage() {
                 {/* Cyber grid overlay */}
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
                 
-                {/* Smooth Scanning Animation */}
                 <motion.div 
-                  animate={{ y: [0, 224, 0] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                  className="absolute left-0 right-0 h-32 -top-32 bg-gradient-to-b from-transparent to-teal-400/40 z-10 border-b-[3px] border-teal-400 shadow-[0_20px_30px_rgba(45,212,191,0.4)]" 
+                  animate={{ 
+                    y: [0, 224, 224, 0, 0],
+                    scaleY: [1, 1, -1, -1, 1]
+                  }}
+                  transition={{ 
+                    duration: 3, 
+                    repeat: Infinity, 
+                    ease: "linear",
+                    times: [0, 0.499, 0.5, 0.999, 1]
+                  }}
+                  className="absolute left-0 right-0 h-32 -top-32 bg-gradient-to-b from-transparent to-teal-400/40 z-10 border-b-[3px] border-teal-400 shadow-[0_20px_30px_rgba(45,212,191,0.4)] origin-bottom" 
                 />
                 
                 {/* UI Corner Accents */}
