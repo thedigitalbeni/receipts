@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan, FileSearch, Code } from 'lucide-react';
+import { UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan, FileSearch, Code, ZoomIn, ZoomOut, Info, Clock, Database } from 'lucide-react';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 // ---------------------------------------------------------------------------
@@ -39,10 +39,42 @@ const STRENGTH_COLORS: Record<string, string> = {
   Limited: 'text-zinc-400 border-zinc-400/40 bg-zinc-400/10',
 };
 
+
+function ZoomableReceipt({ src }: { src: string }) {
+  const [zoomed, setZoomed] = useState(false);
+  return (
+    <div 
+      className={`relative w-full h-full rounded-xl bg-black/50 border border-white/5 ${zoomed ? 'overflow-auto flex items-start justify-center' : 'flex items-center justify-center overflow-hidden'}`}
+      onClick={() => setZoomed(!zoomed)}
+    >
+      <div className="absolute top-4 right-4 z-50 pointer-events-none bg-black/50 text-white/70 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md flex items-center gap-2 border border-white/10">
+        {zoomed ? <ZoomOut className="w-4 h-4"/> : <ZoomIn className="w-4 h-4"/>}
+        {zoomed ? 'Click to zoom out' : 'Click to zoom in'}
+      </div>
+      <img
+        src={src}
+        alt="Full Receipt"
+        className={`transition-all duration-300 ${zoomed ? 'w-full h-auto max-w-none cursor-zoom-out' : 'max-w-full max-h-full object-contain cursor-zoom-in'}`}
+      />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
+
+
+interface ImageDetails {
+  name: string;
+  size: string;
+  dimensions: string;
+  source: string;
+}
+
 export default function ReceiptsPage() {
+  const [imageDetails, setImageDetails] = useState<ImageDetails | null>(null);
+
   // ---- state ----
   const [appState, setAppState] = useState<AppState>('DROPZONE');
   const [dragActive, setDragActive] = useState(false);
@@ -111,7 +143,20 @@ export default function ReceiptsPage() {
       setAppState('ERROR');
       return;
     }
-    setThumbnail(URL.createObjectURL(file));
+    const objectUrl = URL.createObjectURL(file);
+    setThumbnail(objectUrl);
+    
+    const img = new window.Image();
+    img.onload = () => {
+      setImageDetails({
+        name: file.name,
+        size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
+        dimensions: `${img.width} × ${img.height} px`,
+        source: 'Local Upload',
+      });
+    };
+    img.src = objectUrl;
+
     setAppState('ANALYZING');
     setLoadingIdx(0);
     await sendToApi(file);
@@ -121,6 +166,20 @@ export default function ReceiptsPage() {
   const onUrlSubmit = async () => {
     if (!imageUrl.trim()) return;
     setThumbnail(imageUrl);
+    
+    const img = new window.Image();
+    img.onload = () => {
+      let name = 'Image from URL';
+      try { name = new URL(imageUrl).pathname.split('/').pop() || name; } catch {}
+      setImageDetails({
+        name,
+        size: 'Unknown',
+        dimensions: `${img.width} × ${img.height} px`,
+        source: 'URL Input',
+      });
+    };
+    img.src = imageUrl;
+
     setAppState('ANALYZING');
     setLoadingIdx(0);
     await sendToApi(null, imageUrl);
@@ -184,6 +243,7 @@ export default function ReceiptsPage() {
     setThumbnail(null);
     setImageUrl('');
     setResult(null);
+    setImageDetails(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -363,14 +423,11 @@ export default function ReceiptsPage() {
                 {/* Cyber grid overlay */}
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
                 
-                {/* Scanning line animation */}
-                <div 
-                  className="absolute top-0 left-0 right-0 h-1 bg-teal-400 shadow-[0_0_15px_rgba(45,212,191,1)] z-10 scan-line" 
-                />
+                {/* Smooth Scanning Animation */}
                 <motion.div 
-                  animate={{ y: ['-100%', '100%', '-100%'] }}
+                  animate={{ y: [0, 224, 0] }}
                   transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                  className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-transparent to-teal-400/20 z-0" 
+                  className="absolute left-0 right-0 h-32 -top-32 bg-gradient-to-b from-transparent to-teal-400/40 z-10 border-b-[3px] border-teal-400 shadow-[0_20px_30px_rgba(45,212,191,0.4)]" 
                 />
                 
                 {/* UI Corner Accents */}
@@ -439,17 +496,28 @@ export default function ReceiptsPage() {
                 </div>
               </div>
 
-              <motion.div 
-                whileHover={{ scale: 1.02 }}
-                className="relative w-full max-w-xs aspect-[9/16] rounded-[2rem] overflow-hidden border-2 border-white/10 shadow-[0_20px_60px_-15px_rgba(45,212,191,0.2)]"
-              >
-                <img
-                  id="receipt-image"
-                  src={`/api/receipt/${result.id}`}
-                  alt="Verification Receipt"
-                  className="w-full h-full object-cover"
-                />
-              </motion.div>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <motion.div 
+                    whileHover={{ scale: 1.02 }}
+                    className="relative w-full max-w-xs aspect-[9/16] rounded-[2rem] overflow-hidden border-2 border-white/10 shadow-[0_20px_60px_-15px_rgba(45,212,191,0.2)] cursor-zoom-in group"
+                  >
+                    <img
+                      id="receipt-image"
+                      src={`/api/receipt/${result.id}`}
+                      alt="Verification Receipt"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-[#0A0A0A]/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
+                      <ZoomIn className="w-10 h-10 text-white drop-shadow-2xl" />
+                    </div>
+                  </motion.div>
+                </DialogTrigger>
+                <DialogContent className="max-w-7xl w-[95vw] h-[95vh] bg-[#0A0A0A]/95 backdrop-blur-xl border-white/10 flex flex-col p-2 sm:p-6 !pt-12">
+                  <DialogHeader className="hidden"><DialogTitle>Receipt</DialogTitle><DialogDescription>Receipt Modal</DialogDescription></DialogHeader>
+                  <ZoomableReceipt src={`/api/receipt/${result.id}`} />
+                </DialogContent>
+              </Dialog>
 
               <div className="flex gap-3 w-full max-w-xs mt-2">
                 <motion.button
@@ -492,6 +560,35 @@ export default function ReceiptsPage() {
                   </DialogContent>
                 </Dialog>
               </div>
+              <div className="w-full max-w-md mt-6 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 shadow-xl text-sm">
+                <div className="flex items-center gap-2 text-teal-400 font-bold mb-4 uppercase tracking-wider text-xs">
+                  <Info className="w-4 h-4" /> Scan Details
+                </div>
+                
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-white/50 flex items-center gap-1.5"><FileSearch className="w-3.5 h-3.5"/> File Size</span>
+                    <span className="text-white/90 font-medium">{imageDetails?.size || 'Unknown'}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-white/50 flex items-center gap-1.5"><Scan className="w-3.5 h-3.5"/> Dimensions</span>
+                    <span className="text-white/90 font-medium">{imageDetails?.dimensions || 'Unknown'}</span>
+                  </div>
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-white/50 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5"/> Processing Time</span>
+                    <span className="text-white/90 font-medium">{result.processing_time_ms} ms</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-white/50 flex items-center gap-1.5"><Database className="w-3.5 h-3.5"/> Cache Status</span>
+                    {result.cached ? (
+                      <span className="text-teal-400 bg-teal-400/10 px-2 py-0.5 rounded-md font-bold text-xs uppercase border border-teal-400/20">Hit</span>
+                    ) : (
+                      <span className="text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md font-bold text-xs uppercase border border-purple-500/20">Miss (Native Run)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
             </motion.div>
           )}
 
