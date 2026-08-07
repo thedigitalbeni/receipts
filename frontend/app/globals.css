@@ -37,22 +37,7 @@ body {
   box-shadow: 0 0 20px rgba(45, 212, 191, 0.1);
 }
 
-@keyframes scan {
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
-}
 
-.scan-line {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: #2dd4bf;
-  box-shadow: 0 0 10px #2dd4bf, 0 0 20px #2dd4bf;
-  animation: scan 2s linear infinite;
-  opacity: 0.8;
-}
 
 @keyframes pulse-glow {
   0%, 100% { opacity: 1; }
