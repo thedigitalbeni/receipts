@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import ipaddress
+import re
 import socket
 from urllib.parse import urlparse
 
@@ -32,6 +33,8 @@ from PIL import Image
 # ---------------------------------------------------------------------------
 
 MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024  # 15 MB
+MAX_HTML_FETCH_BYTES = 2 * 1024 * 1024    # 2 MB
+HTML_FETCH_TIMEOUT_SECS = 3.0
 
 # Private/reserved IP networks to block for SSRF protection.
 # Checked AFTER DNS resolution, not by string-matching hostnames.
@@ -226,3 +229,55 @@ async def download_image_from_url(url: str) -> bytes:
                     )
                 chunks.append(chunk)
             return b"".join(chunks)
+
+# ---------------------------------------------------------------------------
+# Social Link Extraction
+# ---------------------------------------------------------------------------
+
+async def extract_social_image_url(url: str) -> str:
+    """Fetch HTML from URL and extract og:image or twitter:image.
+    
+    Assumes SSRF validation (validate_url_scheme_and_resolve) has already
+    been performed on the URL.
+    """
+    html_content = b""
+    async with httpx.AsyncClient(timeout=HTML_FETCH_TIMEOUT_SECS, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
+        try:
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                content_type = response.headers.get("content-type", "")
+                if "text/html" not in content_type.lower():
+                    raise InputValidationError(f"Expected HTML page for social link extraction, got {content_type}")
+                
+                total = 0
+                chunks = []
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    total += len(chunk)
+                    if total > MAX_HTML_FETCH_BYTES:
+                        raise InputValidationError(
+                            f"HTML content too large: exceeds {MAX_HTML_FETCH_BYTES} byte limit"
+                        )
+                    chunks.append(chunk)
+                html_content = b"".join(chunks)
+        except httpx.HTTPError as e:
+            raise InputValidationError(f"Could not fetch HTML: {e}")
+            
+    html_text = html_content.decode("utf-8", errors="ignore")
+    
+    # Match <meta property="og:image" content="..."> or name="twitter:image"
+    og_match = re.search(
+        r'<meta[^>]+(?:property|name)=[\'"]?(?:og:image|twitter:image)[\'"]?[^>]*content=[\'"]([^\'"]+)[\'"]',
+        html_text, re.IGNORECASE
+    )
+    if og_match:
+        return og_match.group(1).replace("&amp;", "&")
+        
+    # Match <meta content="..." property="og:image">
+    og_match_rev = re.search(
+        r'<meta[^>]*content=[\'"]([^\'"]+)[\'"][^>]+(?:property|name)=[\'"]?(?:og:image|twitter:image)[\'"]?',
+        html_text, re.IGNORECASE
+    )
+    if og_match_rev:
+        return og_match_rev.group(1).replace("&amp;", "&")
+        
+    raise InputValidationError("No social image metadata found in HTML.")

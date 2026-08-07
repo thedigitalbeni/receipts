@@ -46,6 +46,7 @@ from app.security import (
     validate_url_scheme_and_resolve,
     validate_url_content_type,
     download_image_from_url,
+    extract_social_image_url,
 )
 from app.forensics import compute_phash, extract_exif
 # Fix #1: Import the actual functions from provenance.py (not the
@@ -163,7 +164,14 @@ async def verify(
         validate_url_scheme_and_resolve(image_url)
 
         # 2. Content-type validation: HEAD → fallback GET w/ Range
-        await validate_url_content_type(image_url)
+        try:
+            await validate_url_content_type(image_url)
+        except InputValidationError as e:
+            # If it's not a direct image, attempt social link extraction
+            image_url = await extract_social_image_url(image_url)
+            # Re-run full security validation on the extracted URL
+            validate_url_scheme_and_resolve(image_url)
+            await validate_url_content_type(image_url)
 
         # 3. Download image (streaming, with 15 MB limit)
         image_bytes = await download_image_from_url(image_url)
@@ -195,13 +203,24 @@ async def verify(
         # Cache hit — return stored result immediately without re-running
         # the pipeline. This avoids burning SerpApi quota and C2PA cycles
         # for images we've already fully verified.
+        
+        # Safe fallback in case older DB rows have missing evidence_strength
+        raw_strength = cached_row.get("evidence_strength")
+        if not raw_strength:
+            raw_strength = "Limited"
+            
+        try:
+            strength = EvidenceStrength(raw_strength)
+        except ValueError:
+            strength = EvidenceStrength.limited
+
         return VerifyResponse(
             id=cached_row["id"],
-            classification=cached_row["classification"],
-            evidence_strength=EvidenceStrength(cached_row["evidence_strength"]),
-            evidence=cached_row["evidence"],
-            interpretation=cached_row["interpretation"],
-            processing_time_ms=cached_row["processing_time_ms"],
+            classification=cached_row["classification"] or "Unverified — No Provenance Found",
+            evidence_strength=strength,
+            evidence=cached_row["evidence"] or [],
+            interpretation=cached_row["interpretation"] or "",
+            processing_time_ms=cached_row["processing_time_ms"] or 0,
             receipt_image_url=f"/api/receipt/{cached_row['id']}",
             cached=True,
         )

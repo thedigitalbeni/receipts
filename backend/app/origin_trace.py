@@ -55,7 +55,7 @@ WAYBACK_TIMEOUT = 10
 MAX_WAYBACK_LOOKUPS = 5
 
 # Delay between Wayback requests to avoid HTTP 429 rate limiting
-WAYBACK_DELAY_SECS = 1.5
+WAYBACK_DELAY_SECS = 3.0
 
 
 def _get_serpapi_key() -> Optional[str]:
@@ -140,42 +140,52 @@ def _query_wayback(url: str) -> Optional[dict]:
     Returns:
         Dict with 'url', 'timestamp', 'datetime' if archived, None otherwise.
     """
-    try:
-        response = requests.get(
-            WAYBACK_ENDPOINT,
-            params={"url": url, "timestamp": "19700101"},  # earliest possible
-            timeout=WAYBACK_TIMEOUT,
-        )
-
-        if response.status_code != 200:
-            logger.warning(f"Wayback returned HTTP {response.status_code} for {url}")
-            return None
-
-        data = response.json()
-        snapshots = data.get("archived_snapshots", {})
-        closest = snapshots.get("closest")
-
-        if not closest or not closest.get("available"):
-            return None
-
-        # Parse timestamp (format: yyyyMMddHHmmss)
-        ts_str = closest.get("timestamp", "")
+    max_retries = 3
+    for attempt in range(max_retries):
         try:
-            dt = datetime.strptime(ts_str, "%Y%m%d%H%M%S").replace(
-                tzinfo=timezone.utc
+            response = requests.get(
+                WAYBACK_ENDPOINT,
+                params={"url": url, "timestamp": "19700101"},  # earliest possible
+                timeout=WAYBACK_TIMEOUT,
             )
-        except ValueError:
-            dt = None
 
-        return {
-            "url": closest.get("url", ""),
-            "timestamp": ts_str,
-            "datetime": dt.isoformat() if dt else None,
-        }
+            if response.status_code == 429 and attempt < max_retries - 1:
+                logger.warning(f"Wayback rate limited (429) for {url}, retrying in {2 ** attempt}s...")
+                time.sleep(2 ** attempt)
+                continue
 
-    except requests.RequestException as e:
-        logger.warning(f"Wayback request failed for {url}: {e}")
-        return None
+            if response.status_code != 200:
+                logger.warning(f"Wayback returned HTTP {response.status_code} for {url}")
+                return None
+
+            data = response.json()
+            snapshots = data.get("archived_snapshots", {})
+            closest = snapshots.get("closest")
+
+            if not closest or not closest.get("available"):
+                return None
+
+            # Parse timestamp (format: yyyyMMddHHmmss)
+            ts_str = closest.get("timestamp", "")
+            try:
+                dt = datetime.strptime(ts_str, "%Y%m%d%H%M%S").replace(
+                    tzinfo=timezone.utc
+                )
+            except ValueError:
+                dt = None
+
+            return {
+                "url": closest.get("url", ""),
+                "timestamp": ts_str,
+                "datetime": dt.isoformat() if dt else None,
+            }
+
+        except requests.RequestException as e:
+            logger.warning(f"Wayback request failed for {url}: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            return None
 
 
 # ---------------------------------------------------------------------------

@@ -121,9 +121,10 @@ def get_receipt_by_sha256(sha256: str) -> Optional[dict]:
 
     Returns the stored receipt row dict on cache hit, None on miss.
     Queries Supabase directly — no in-memory fallback.
+    Only returns rows that have successfully completed verification.
     """
     client = get_supabase_client()
-    res = client.table("receipts").select("*").eq("sha256", sha256).execute()
+    res = client.table("receipts").select("*").eq("sha256", sha256).eq("status", "complete").execute()
     if res.data and len(res.data) > 0:
         return res.data[0]
     return None
