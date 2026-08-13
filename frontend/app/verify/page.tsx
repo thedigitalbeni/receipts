@@ -5,8 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan,
   FileSearch, Code, ZoomIn, ZoomOut, Info, Clock, Database, ChevronDown,
-  ArrowLeft, ShieldCheck, Brain, Globe, Cpu, Fingerprint, CheckCircle2,
-  AlertTriangle, XCircle, HelpCircle, ExternalLink,
+  ArrowLeft, ShieldCheck, Brain, Globe, Cpu, CheckCircle2,
+  HelpCircle, ExternalLink, Plus, Minus, Maximize2,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -103,28 +103,71 @@ const DEFAULT_CONFIG = {
 };
 
 // ---------------------------------------------------------------------------
-// ZoomableReceipt
+// ZoomableReceipt — wheel zoom + drag to pan
 // ---------------------------------------------------------------------------
 function ZoomableReceipt({ src }: { src: string }) {
-  const [zoomed, setZoomed] = useState(false);
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const dragStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Wheel zoom
+  const onWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    setScale(s => Math.min(5, Math.max(1, s - e.deltaY * 0.002)));
+  }, []);
+
+  // Drag to pan
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (scale <= 1) return;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    setDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y };
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragging || !dragStart.current) return;
+    setPos({ x: dragStart.current.px + e.clientX - dragStart.current.x, y: dragStart.current.py + e.clientY - dragStart.current.y });
+  };
+  const onPointerUp = () => { setDragging(false); dragStart.current = null; };
+
+  // Reset when scale goes back to 1
+  useEffect(() => { if (scale <= 1) setPos({ x: 0, y: 0 }); }, [scale]);
+
+  const zoom = (delta: number) => setScale(s => Math.min(5, Math.max(1, +(s + delta).toFixed(1))));
+  const reset = () => { setScale(1); setPos({ x: 0, y: 0 }); };
+
   return (
-    <div
-      className={`relative w-full h-full rounded-xl bg-black/50 border border-white/5 flex items-center justify-center ${zoomed ? 'overflow-auto' : 'overflow-hidden'}`}
-      onClick={() => setZoomed(!zoomed)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setZoomed(!zoomed); }}
+    <div ref={containerRef} className="relative w-full h-full rounded-xl bg-black/90 overflow-hidden select-none"
+      onWheel={onWheel} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp} onPointerLeave={onPointerUp}
+      style={{ cursor: scale > 1 ? (dragging ? 'grabbing' : 'grab') : 'default' }}
     >
-      <div className="absolute bottom-4 right-4 z-40 pointer-events-none bg-black/60 text-white/70 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md flex items-center gap-2 border border-white/10">
-        {zoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
-        {zoomed ? 'Click to zoom out' : 'Click to zoom in'}
-      </div>
       <img
-        src={src}
-        alt="Full Receipt"
-        style={{ transform: zoomed ? 'scale(2)' : 'scale(1)', transformOrigin: 'center center' }}
-        className={`transition-transform duration-300 max-w-full max-h-full object-contain ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
+        src={src} alt="Full Receipt" draggable={false}
+        style={{ transform: `scale(${scale}) translate(${pos.x / scale}px, ${pos.y / scale}px)`, transformOrigin: 'center center', transition: dragging ? 'none' : 'transform 0.15s ease' }}
+        className="w-full h-full object-contain"
       />
+      {/* Zoom controls */}
+      <div className="absolute bottom-4 right-4 z-40 flex items-center gap-1.5 bg-black/70 backdrop-blur-md border border-white/10 rounded-xl p-1.5">
+        <button onClick={() => zoom(-0.5)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-white/70 hover:text-white" aria-label="Zoom out">
+          <Minus className="w-3.5 h-3.5" />
+        </button>
+        <span className="text-[11px] font-bold text-white/50 min-w-[38px] text-center">{Math.round(scale * 100)}%</span>
+        <button onClick={() => zoom(0.5)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-white/70 hover:text-white" aria-label="Zoom in">
+          <Plus className="w-3.5 h-3.5" />
+        </button>
+        {scale > 1 && (
+          <button onClick={reset} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors text-teal-400 hover:text-teal-300 border-l border-white/10 ml-0.5" aria-label="Reset zoom">
+            <ZoomOut className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+      {scale <= 1 && (
+        <div className="absolute bottom-4 left-4 z-40 text-[11px] text-white/30 bg-black/50 px-2.5 py-1 rounded-lg border border-white/5 backdrop-blur-md">
+          Scroll or use controls to zoom
+        </div>
+      )}
     </div>
   );
 }
@@ -282,21 +325,21 @@ export default function ReceiptsPage() {
 
       {/* ── Nav Header ── */}
       <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#0A0A0A]/60 border-b border-white/5">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm font-medium">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-1.5 text-white/50 hover:text-white/80 transition-colors text-sm font-medium">
             <ArrowLeft className="w-4 h-4" />
-            Back
+            <span className="hidden sm:inline">Back</span>
           </Link>
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-teal-500" />
             <span className="tracking-[0.3em] text-xs font-bold uppercase text-white/60">Receipts</span>
           </div>
-          <div className="w-16" /> {/* spacer */}
+          <div className="w-10 sm:w-16" />
         </div>
       </header>
 
       {/* ── Main content ── */}
-      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-24">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-3 sm:px-6 py-20 sm:py-24">
         <AnimatePresence mode="wait">
 
           {/* ══════════════ DROPZONE ══════════════ */}
@@ -307,14 +350,14 @@ export default function ReceiptsPage() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.4 }}
-              className="w-full max-w-2xl flex flex-col items-center gap-8"
+              className="w-full max-w-2xl flex flex-col items-center gap-6 sm:gap-8"
             >
               {/* Hero text */}
-              <div className="text-center space-y-4">
-                <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-teal-400 via-white/90 to-purple-500 leading-tight pb-1">
+              <div className="text-center space-y-3">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-teal-400 via-white/90 to-purple-500 leading-tight pb-1">
                   Don&apos;t share it.<br />Prove it.
                 </h1>
-                <p className="text-sm text-white/50 max-w-md mx-auto leading-relaxed">
+                <p className="text-sm text-white/50 max-w-sm sm:max-w-md mx-auto leading-relaxed">
                   Paste a URL or drop an image file — our 5-layer forensic pipeline runs in seconds.
                 </p>
               </div>
@@ -324,70 +367,65 @@ export default function ReceiptsPage() {
                 id="dropzone"
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
-                className={`group relative w-full rounded-3xl flex flex-col items-center justify-center cursor-pointer py-20 px-8 overflow-hidden backdrop-blur-xl transition-all duration-300 ${
+                className={`group relative w-full rounded-3xl flex flex-col items-center justify-center cursor-pointer py-12 sm:py-16 px-6 sm:px-8 overflow-hidden backdrop-blur-xl transition-all duration-300 ${
                   dragActive
                     ? 'border-2 border-teal-400 bg-teal-400/10 shadow-[0_0_40px_rgba(45,212,191,0.2)]'
-                    : 'border border-white/10 bg-white/[0.03] hover:border-teal-400/40 hover:bg-white/[0.06] hover:shadow-[0_0_30px_rgba(45,212,191,0.1)]'
+                    : 'border border-white/10 bg-white/[0.03] hover:border-teal-400/40 hover:bg-white/[0.05] hover:shadow-[0_0_30px_rgba(45,212,191,0.1)]'
                 }`}
                 onDragEnter={handleDrag} onDragLeave={handleDrag}
                 onDragOver={handleDrag} onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                {/* Animated bg gradient */}
                 <motion.div animate={{ opacity: [0.05, 0.15, 0.05] }} transition={{ duration: 4, repeat: Infinity }}
                   className="absolute inset-0 bg-gradient-to-b from-teal-500/10 to-transparent pointer-events-none" />
-
-                {/* Corner accents */}
-                <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-teal-400/40 rounded-tl-sm" />
-                <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-teal-400/40 rounded-tr-sm" />
-                <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-teal-400/40 rounded-bl-sm" />
-                <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-teal-400/40 rounded-br-sm" />
+                <div className="absolute top-3 left-3 w-5 h-5 border-t-2 border-l-2 border-teal-400/40" />
+                <div className="absolute top-3 right-3 w-5 h-5 border-t-2 border-r-2 border-teal-400/40" />
+                <div className="absolute bottom-3 left-3 w-5 h-5 border-b-2 border-l-2 border-teal-400/40" />
+                <div className="absolute bottom-3 right-3 w-5 h-5 border-b-2 border-r-2 border-teal-400/40" />
 
                 <input ref={fileInputRef} id="file-input" type="file" className="hidden"
                   accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} aria-label="Upload image file" />
 
-                <div className={`w-16 h-16 rounded-2xl mb-5 flex items-center justify-center transition-colors ${dragActive ? 'bg-teal-400/20 border border-teal-400/40' : 'bg-white/5 border border-white/10'}`}>
-                  <UploadCloud className={`w-8 h-8 transition-colors ${dragActive ? 'text-teal-400' : 'text-white/40 group-hover:text-white/60'}`} />
+                <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl mb-4 flex items-center justify-center transition-colors ${dragActive ? 'bg-teal-400/20 border border-teal-400/40' : 'bg-white/5 border border-white/10'}`}>
+                  <UploadCloud className={`w-7 h-7 sm:w-8 sm:h-8 transition-colors ${dragActive ? 'text-teal-400' : 'text-white/40 group-hover:text-white/60'}`} />
                 </div>
-                <p className="text-lg font-semibold text-white/90">
+                <p className="text-base sm:text-lg font-semibold text-white/90">
                   {dragActive ? 'Drop it here!' : 'Drop image or click to upload'}
                 </p>
-                <p className="text-xs text-white/35 mt-2 font-medium tracking-wide">
-                  JPEG · PNG · WebP &nbsp;·&nbsp; Max 15 MB
-                </p>
+                <p className="text-xs text-white/35 mt-1.5 font-medium tracking-wide">JPEG · PNG · WebP · Max 15 MB</p>
               </motion.div>
 
               {/* Divider */}
-              <div className="flex items-center w-full gap-4 text-white/20 text-xs font-bold uppercase tracking-widest">
+              <div className="flex items-center w-full gap-3 text-white/20 text-xs font-bold uppercase tracking-widest">
                 <div className="h-px bg-white/10 flex-1" />or<div className="h-px bg-white/10 flex-1" />
               </div>
 
               {/* URL input */}
-              <div className="flex w-full gap-3">
-                <div className="relative flex-1">
-                  <ExternalLink className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
+              <div className="flex w-full gap-2 sm:gap-3">
+                <div className="relative flex-1 min-w-0">
+                  <ExternalLink className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
                   <input
                     id="url-input" type="url" value={imageUrl}
                     onChange={(e) => setImageUrl(e.target.value)}
                     onKeyDown={handleUrlKeyDown}
                     placeholder="https://example.com/image.jpg"
                     aria-label="Image URL"
-                    className="w-full pl-11 pr-4 bg-white/5 border border-white/10 rounded-2xl py-4 text-sm text-white placeholder-white/25 focus:outline-none focus:border-teal-400/60 focus:ring-1 focus:ring-teal-400/30 focus:bg-white/8 transition-all"
+                    className="w-full pl-10 sm:pl-11 pr-3 bg-white/5 border border-white/10 rounded-2xl py-3.5 sm:py-4 text-sm text-white placeholder-white/25 focus:outline-none focus:border-teal-400/60 focus:ring-1 focus:ring-teal-400/30 transition-all"
                   />
                 </div>
                 <button
                   id="verify-url-btn" onClick={onUrlSubmit}
                   disabled={!imageUrl.trim()}
-                  className="bg-teal-500 hover:bg-teal-400 disabled:opacity-30 disabled:cursor-not-allowed text-black font-bold px-7 py-4 rounded-2xl text-sm tracking-wide transition-all shadow-[0_0_20px_rgba(45,212,191,0.2)] hover:shadow-[0_0_30px_rgba(45,212,191,0.4)] disabled:shadow-none"
+                  className="bg-teal-500 hover:bg-teal-400 disabled:opacity-30 disabled:cursor-not-allowed text-black font-bold px-5 sm:px-7 py-3.5 sm:py-4 rounded-2xl text-sm tracking-wide transition-all shadow-[0_0_20px_rgba(45,212,191,0.2)] hover:shadow-[0_0_30px_rgba(45,212,191,0.4)] shrink-0"
                 >
                   Verify
                 </button>
               </div>
 
               {/* Capability pills */}
-              <div className="flex flex-wrap justify-center gap-2 mt-2">
-                {['C2PA Manifest', 'EXIF Metadata', 'Error Level Analysis', 'Quantization Fingerprint', 'Origin Trace'].map((c) => (
-                  <span key={c} className="text-[11px] text-white/35 bg-white/5 border border-white/10 px-3 py-1 rounded-full font-medium">{c}</span>
+              <div className="flex flex-wrap justify-center gap-1.5 sm:gap-2">
+                {['C2PA', 'EXIF', 'ELA', 'Quantization', 'Origin Trace'].map((c) => (
+                  <span key={c} className="text-[10px] sm:text-[11px] text-white/35 bg-white/5 border border-white/10 px-2.5 sm:px-3 py-1 rounded-full font-medium">{c}</span>
                 ))}
               </div>
             </motion.div>
@@ -401,49 +439,127 @@ export default function ReceiptsPage() {
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.05 }}
               transition={{ duration: 0.5 }}
-              className="w-full max-w-sm flex flex-col items-center gap-10"
+              className="w-full max-w-md flex flex-col items-center gap-10"
             >
-              {/* Scanner box */}
-              <div className="relative w-56 h-56 rounded-3xl overflow-hidden bg-white/5 border border-white/10 shadow-[0_0_40px_rgba(45,212,191,0.15)]">
-                {thumbnail && (
-                  <img src={thumbnail} alt="Analyzing" className="w-full h-full object-cover opacity-25 grayscale blur-[2px]" />
-                )}
-                {/* Grid overlay */}
-                <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
-                {/* Scan beam */}
+              {/* ── Cinematic Scanner ── */}
+              <div className="relative w-64 h-64 sm:w-72 sm:h-72">
+
+                {/* Outer glow ring */}
                 <motion.div
-                  animate={{ y: [0, 224, 224, 0, 0], scaleY: [1, 1, -1, -1, 1] }}
-                  transition={{ duration: 3, repeat: Infinity, ease: 'linear', times: [0, 0.499, 0.5, 0.999, 1] }}
-                  className="absolute left-0 right-0 h-32 -top-32 bg-gradient-to-b from-transparent to-teal-400/40 z-10 border-b-[3px] border-teal-400 shadow-[0_20px_30px_rgba(45,212,191,0.4)] origin-bottom"
+                  animate={{ opacity: [0.3, 0.7, 0.3], scale: [1, 1.04, 1] }}
+                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute inset-0 rounded-3xl border border-teal-400/30 shadow-[0_0_40px_rgba(45,212,191,0.25)]"
                 />
-                {/* Corner accents */}
-                <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-teal-400" />
-                <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-teal-400" />
-                <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-teal-400" />
-                <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-teal-400" />
-                {/* Center icon */}
-                <div className="absolute inset-0 flex items-center justify-center z-20">
-                  <Scan className="w-12 h-12 text-teal-400/60 animate-pulse" />
+
+                {/* Scanner box */}
+                <div className="absolute inset-0 rounded-3xl overflow-hidden bg-[#050e0e] border border-teal-500/20">
+
+                  {/* Thumbnail */}
+                  {thumbnail && (
+                    <img src={thumbnail} alt="Analyzing" className="absolute inset-0 w-full h-full object-cover opacity-15 grayscale" />
+                  )}
+
+                  {/* Cyber grid */}
+                  <div className="absolute inset-0 bg-[linear-gradient(rgba(45,212,191,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(45,212,191,0.04)_1px,transparent_1px)] bg-[size:24px_24px]" />
+
+                  {/* Horizontal scanlines (subtle) */}
+                  <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(0,0,0,0.15)_2px,rgba(0,0,0,0.15)_4px)] pointer-events-none" />
+
+                  {/* Scan beam — clean back-and-forth */}
+                  <motion.div
+                    animate={{ top: ['0%', '100%'] }}
+                    transition={{ duration: 1.8, repeat: Infinity, repeatType: 'reverse', ease: 'linear' }}
+                    className="absolute left-0 right-0 h-0 z-10"
+                    style={{ pointerEvents: 'none' }}
+                  >
+                    {/* Leading glow trail above beam */}
+                    <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-b from-transparent to-teal-400/35" />
+                    {/* The bright scan line itself */}
+                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-teal-400 shadow-[0_0_12px_4px_rgba(45,212,191,0.8),0_0_30px_8px_rgba(45,212,191,0.4)]" />
+                    {/* Reflection shimmer above */}
+                    <div className="absolute bottom-[2px] left-[10%] right-[10%] h-[1px] bg-white/40" />
+                  </motion.div>
+
+                  {/* Pulsing radar circles from center */}
+                  {[0, 0.6, 1.2].map((delay, i) => (
+                    <motion.div key={i}
+                      animate={{ scale: [0.3, 1.4], opacity: [0.6, 0] }}
+                      transition={{ duration: 2, repeat: Infinity, delay, ease: 'easeOut' }}
+                      className="absolute inset-0 m-auto w-16 h-16 rounded-full border border-teal-400/50"
+                    />
+                  ))}
+
+                  {/* Data readout overlays */}
+                  <div className="absolute top-3 left-3 flex flex-col gap-1 font-mono text-[9px] text-teal-400/60 z-20">
+                    {['SHA-256', 'C2PA', 'EXIF'].map((label, i) => (
+                      <motion.div key={label} animate={{ opacity: [0.4, 1, 0.4] }}
+                        transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.4 }}
+                        className="flex items-center gap-1">
+                        <div className="w-1 h-1 rounded-full bg-teal-400" />
+                        {label}
+                      </motion.div>
+                    ))}
+                  </div>
+                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1 font-mono text-[9px] text-teal-400/50 z-20">
+                    {['ELA', 'QNT', 'ORIG'].map((label, i) => (
+                      <motion.div key={label} animate={{ opacity: [0.3, 0.9, 0.3] }}
+                        transition={{ duration: 2, repeat: Infinity, delay: i * 0.5 + 0.2 }}
+                        className="flex items-center gap-1">
+                        {label}
+                        <div className="w-1 h-1 rounded-full bg-teal-400" />
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Bottom status row */}
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between font-mono text-[9px] text-teal-400/50 z-20">
+                    <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.2, repeat: Infinity }}>SCANNING…</motion.span>
+                    <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 0.8, repeat: Infinity }}>●</motion.span>
+                  </div>
+
+                  {/* Corner brackets */}
+                  <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-teal-400 rounded-tl-sm z-20" />
+                  <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-teal-400 rounded-tr-sm z-20" />
+                  <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-teal-400 rounded-bl-sm z-20" />
+                  <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-teal-400 rounded-br-sm z-20" />
                 </div>
+
+                {/* Rotating outer arc */}
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+                  className="absolute -inset-3 rounded-[2rem] border border-dashed border-teal-500/15 pointer-events-none"
+                />
               </div>
 
               {/* Loading text */}
-              <div className="text-center space-y-5 w-full">
+              <div className="text-center space-y-4 w-full">
                 <div className="min-h-[36px] flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     <motion.div key={loadingIdx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}
-                      className="flex items-center gap-2.5 text-base font-semibold text-teal-300 drop-shadow-[0_0_10px_rgba(45,212,191,0.5)]">
+                      className="flex items-center gap-2.5 text-base font-semibold text-teal-300 drop-shadow-[0_0_12px_rgba(45,212,191,0.6)]">
                       <FileSearch className="w-5 h-5 shrink-0" />
                       {LOADING_MESSAGES[loadingIdx]}
                     </motion.div>
                   </AnimatePresence>
                 </div>
-                <div className="w-64 h-1.5 bg-white/10 rounded-full overflow-hidden mx-auto relative">
-                  <motion.div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-teal-400 via-purple-500 to-teal-400 rounded-full"
-                    animate={{ x: ['-100%', '200%'] }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                    style={{ width: '60%' }} />
+                {/* Progress dots */}
+                <div className="flex items-center justify-center gap-2">
+                  {LOADING_MESSAGES.map((_, i) => (
+                    <motion.div key={i}
+                      animate={{ scale: i === loadingIdx ? 1.4 : 1, opacity: i === loadingIdx ? 1 : 0.25 }}
+                      transition={{ duration: 0.3 }}
+                      className={`w-1.5 h-1.5 rounded-full ${i === loadingIdx ? 'bg-teal-400' : 'bg-white/30'}`}
+                    />
+                  ))}
                 </div>
-                <p className="text-xs text-white/30">Running 5-layer forensic pipeline…</p>
+                {/* Progress bar */}
+                <div className="w-56 h-[3px] bg-white/8 rounded-full overflow-hidden mx-auto">
+                  <motion.div className="h-full bg-gradient-to-r from-teal-400 via-purple-400 to-teal-400 rounded-full"
+                    animate={{ x: ['-100%', '200%'] }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                    style={{ width: '50%' }} />
+                </div>
+                <p className="text-xs text-white/25 font-mono tracking-wider">FORENSIC PIPELINE ACTIVE</p>
               </div>
             </motion.div>
           )}
@@ -455,25 +571,25 @@ export default function ReceiptsPage() {
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 180 }}
-              className="w-full max-w-5xl flex flex-col gap-6"
+              className="w-full max-w-5xl flex flex-col gap-4 sm:gap-6"
             >
               {/* ── Classification Header ── */}
-              <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl border ${cfg.border} ${cfg.bg} ${cfg.glow}`}>
+              <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 p-4 sm:p-5 rounded-2xl border ${cfg.border} ${cfg.bg} ${cfg.glow}`}>
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-xl ${cfg.bg} border ${cfg.border} flex items-center justify-center shrink-0`}>
+                  <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl ${cfg.bg} border ${cfg.border} flex items-center justify-center shrink-0`}>
                     {cfg.icon}
                   </div>
                   <div>
                     <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold mb-0.5">Verification Result</p>
-                    <h2 className={`text-xl font-extrabold ${cfg.color}`}>{result.classification}</h2>
+                    <h2 className={`text-lg sm:text-xl font-extrabold ${cfg.color} leading-tight`}>{result.classification}</h2>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg border ${cfg.strengthColor}`}>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">
+                  <span className={`text-xs font-bold uppercase tracking-wider px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg border ${cfg.strengthColor}`}>
                     {result.evidence_strength} Evidence
                   </span>
                   {result.cached && (
-                    <span className="text-xs text-teal-400 bg-teal-400/10 border border-teal-400/20 px-2.5 py-1.5 rounded-lg font-bold uppercase tracking-wide">
+                    <span className="text-xs text-teal-400 bg-teal-400/10 border border-teal-400/20 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg font-bold uppercase tracking-wide">
                       Cached
                     </span>
                   )}
@@ -481,7 +597,7 @@ export default function ReceiptsPage() {
               </div>
 
               {/* ── Two-column layout ── */}
-              <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] xl:grid-cols-[340px_1fr] gap-4 sm:gap-6">
 
                 {/* LEFT: Receipt image */}
                 <div className="flex flex-col gap-4">
