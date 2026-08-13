@@ -77,6 +77,7 @@ class OriginTraceResult(BaseModel):
     url: str
     domain: str
     earliest_wayback_timestamp: Optional[str] = None
+    earliest_url_date: Optional[str] = None  # Date extracted from URL path/snippet
 
 
 class OriginTraceEvidence(BaseModel):
@@ -84,6 +85,8 @@ class OriginTraceEvidence(BaseModel):
     serpapi_status: ServiceStatus = ServiceStatus.not_called
     wayback_status: ServiceStatus = ServiceStatus.not_called
     results: list[OriginTraceResult] = Field(default_factory=list)
+    match_count: int = 0
+    unique_domains: int = 0
 
 
 class MetadataEvidence(BaseModel):
@@ -94,6 +97,8 @@ class MetadataEvidence(BaseModel):
     has_exif: bool = False
     editing_software_detected: bool = False
     editing_software_name: Optional[str] = None
+    ela_suspicious: bool = False
+    quantization_software: Optional[str] = None
     camera_make: Optional[str] = None
     camera_model: Optional[str] = None
     date_taken: Optional[str] = None

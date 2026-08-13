@@ -29,6 +29,7 @@ Wayback Machine Availability API:
 """
 
 import os
+import re
 import time
 import json
 import hashlib
@@ -128,6 +129,105 @@ def _extract_visual_matches(serpapi_response: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# URL / Snippet Date Extraction (Wayback fallback)
+# ---------------------------------------------------------------------------
+
+# Regex for dates in URL paths: /2019/03/15/ or /2019-03-15/
+_URL_DATE_PATTERN = re.compile(
+    r'/(?P<year>(?:19|20)\d{2})[/-](?P<month>0[1-9]|1[0-2])[/-](?P<day>0[1-9]|[12]\d|3[01])'
+)
+
+# Regex for dates in snippet text: "March 15, 2019" or "15 Mar 2019" or "2019-03-15"
+_SNIPPET_DATE_PATTERNS = [
+    # "March 15, 2019" or "Mar 15, 2019"
+    re.compile(
+        r'(?P<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
+        r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+        r'\s+(?P<day>\d{1,2}),?\s+(?P<year>(?:19|20)\d{2})',
+        re.IGNORECASE,
+    ),
+    # "15 March 2019" or "15 Mar 2019"
+    re.compile(
+        r'(?P<day>\d{1,2})\s+'
+        r'(?P<month>Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|'
+        r'Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+        r'\s+(?P<year>(?:19|20)\d{2})',
+        re.IGNORECASE,
+    ),
+    # ISO: "2019-03-15"
+    re.compile(
+        r'(?P<year>(?:19|20)\d{2})-(?P<month>0[1-9]|1[0-2])-(?P<day>0[1-9]|[12]\d|3[01])'
+    ),
+]
+
+_MONTH_MAP = {
+    'jan': 1, 'january': 1, 'feb': 2, 'february': 2,
+    'mar': 3, 'march': 3, 'apr': 4, 'april': 4,
+    'may': 5, 'jun': 6, 'june': 6, 'jul': 7, 'july': 7,
+    'aug': 8, 'august': 8, 'sep': 9, 'september': 9,
+    'oct': 10, 'october': 10, 'nov': 11, 'november': 11,
+    'dec': 12, 'december': 12,
+}
+
+
+def _extract_date_from_url(url: str) -> Optional[datetime]:
+    """Extract a publication date from a URL path pattern.
+
+    Looks for patterns like /2019/03/15/ or /2019-03-15/ in the URL path.
+    Returns a timezone-aware datetime if found, None otherwise.
+    """
+    match = _URL_DATE_PATTERN.search(url)
+    if not match:
+        return None
+
+    try:
+        year = int(match.group('year'))
+        month = int(match.group('month'))
+        day = int(match.group('day'))
+        return datetime(year, month, day, tzinfo=timezone.utc)
+    except (ValueError, OverflowError):
+        return None
+
+
+def _extract_date_from_snippet(snippet: str) -> Optional[datetime]:
+    """Extract the earliest date from a text snippet.
+
+    Tries multiple date formats commonly found in article snippets.
+    Returns a timezone-aware datetime if found, None otherwise.
+    """
+    if not snippet:
+        return None
+
+    earliest: Optional[datetime] = None
+
+    for pattern in _SNIPPET_DATE_PATTERNS:
+        for match in pattern.finditer(snippet):
+            try:
+                year_str = match.group('year')
+                month_str = match.group('month')
+                day_str = match.group('day')
+
+                year = int(year_str)
+                day = int(day_str)
+
+                # Month can be numeric or text
+                if month_str.isdigit():
+                    month = int(month_str)
+                else:
+                    month = _MONTH_MAP.get(month_str.lower())
+                    if not month:
+                        continue
+
+                dt = datetime(year, month, day, tzinfo=timezone.utc)
+                if earliest is None or dt < earliest:
+                    earliest = dt
+            except (ValueError, OverflowError):
+                continue
+
+    return earliest
+
+
+# ---------------------------------------------------------------------------
 # Wayback Machine
 # ---------------------------------------------------------------------------
 
@@ -209,19 +309,40 @@ def _chain_wayback_lookups(visual_matches: list[dict]) -> list[dict]:
             time.sleep(WAYBACK_DELAY_SECS)
 
         wayback = _query_wayback(link)
+
+        # Fallback: extract date from URL path if Wayback returned nothing
+        url_date = None
+        if not wayback:
+            extracted = _extract_date_from_url(link)
+            if not extracted:
+                # Try snippet/title text
+                extracted = _extract_date_from_snippet(match.get("title", ""))
+            if extracted:
+                url_date = extracted.isoformat()
+
         enriched_match = {
             **match,
             "domain": domain,
             "wayback": wayback,
+            "url_date": url_date,
         }
         enriched.append(enriched_match)
 
     # Include remaining matches without Wayback data
     for match in visual_matches[MAX_WAYBACK_LOOKUPS:]:
+        link = match["link"]
+        url_date = None
+        extracted = _extract_date_from_url(link)
+        if not extracted:
+            extracted = _extract_date_from_snippet(match.get("title", ""))
+        if extracted:
+            url_date = extracted.isoformat()
+
         enriched.append({
             **match,
-            "domain": urlparse(match["link"]).netloc,
+            "domain": urlparse(link).netloc,
             "wayback": None,
+            "url_date": url_date,
         })
 
     return enriched
@@ -433,17 +554,24 @@ def to_frozen_contract(internal: dict) -> dict:
 
     # --- results ---
     results = []
+    all_domains = set()
     for match in internal.get("visual_matches", []):
         wb = match.get("wayback")
+        domain = match.get("domain", "")
+        if domain:
+            all_domains.add(domain)
         results.append({
             "url": match.get("link", ""),
-            "domain": match.get("domain", ""),
+            "domain": domain,
             "earliest_wayback_timestamp": wb.get("datetime") if wb else None,
+            "earliest_url_date": match.get("url_date"),
         })
 
     return {
         "serpapi_status": serpapi_status,
         "wayback_status": wayback_status,
         "results": results,
+        "match_count": internal.get("match_count", 0),
+        "unique_domains": len(all_domains),
     }
 

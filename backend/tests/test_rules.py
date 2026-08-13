@@ -79,7 +79,7 @@ class TestRulesEngine:
 
         assert result.classification == "Recirculated / Out of Context"
         assert result.evidence_strength == EvidenceStrength.strong
-        assert "Visually identical image indexed over a year ago" in result.evidence
+        assert "Visually identical image indexed over a year ago (Wayback Machine confirmed)" in result.evidence
         assert "Origin context differs from current claim" in result.evidence
         assert "already circulating before" in result.interpretation
 
@@ -153,7 +153,7 @@ class TestRulesEngine:
         assert result.classification == "AI-Generated Content"
         assert result.evidence_strength == EvidenceStrength.strong
         assert "C2PA manifest explicitly declares AI generation" in result.evidence
-        assert "Visually identical image indexed over a year ago" in result.evidence
+        assert "Visually identical image indexed over a year ago (Wayback Machine confirmed)" in result.evidence
         assert "Origin context differs from current claim" in result.evidence
 
     @patch("app.rules.datetime")
@@ -177,7 +177,7 @@ class TestRulesEngine:
         assert result.classification == "Verified Camera Original"
         assert result.evidence_strength == EvidenceStrength.strong
         assert "Cryptographically signed camera manifest present and valid" in result.evidence
-        assert "Visually identical image indexed over a year ago" in result.evidence
+        assert "Visually identical image indexed over a year ago (Wayback Machine confirmed)" in result.evidence
         assert "Origin context differs from current claim" in result.evidence
 
     @patch("app.rules.datetime")
@@ -199,7 +199,7 @@ class TestRulesEngine:
         result = evaluate_evidence(ev)
 
         assert result.classification == "Recirculated / Out of Context"
-        assert "Visually identical image indexed over a year ago" in result.evidence
+        assert "Visually identical image indexed over a year ago (Wayback Machine confirmed)" in result.evidence
         assert "Editing software detected in EXIF metadata" in result.evidence
         # Ensure it appears exactly once
         assert result.evidence.count("Editing software detected in EXIF metadata") == 1
@@ -220,3 +220,87 @@ class TestRulesEngine:
         """Permanent canary test proving pytest-socket enforcement works."""
         with pytest.raises(SocketBlockedError):
             requests.get("https://google.com")
+
+    # --- New tests for Rule 3 & 4 improvements ---
+
+    @patch("app.rules.datetime")
+    def test_rule_3_url_date_triggers_moderate(self, mock_datetime):
+        """Rule 3 Scenario B: URL-extracted date > 1 year triggers Moderate."""
+        mock_datetime.now.return_value = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.fromisoformat = datetime.fromisoformat
+
+        ev = create_base_evidence()
+        ev.origin_trace.results = [
+            OriginTraceResult(
+                url="https://example.com/2019/03/15/article",
+                domain="example.com",
+                earliest_wayback_timestamp=None,
+                earliest_url_date="2019-03-15T00:00:00+00:00"
+            )
+        ]
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Recirculated / Out of Context"
+        assert result.evidence_strength == EvidenceStrength.moderate
+        assert any("URL path suggests image dates to" in e for e in result.evidence)
+        assert "already circulating before" in result.interpretation
+
+    @patch("app.rules.datetime")
+    def test_rule_3_match_count_triggers_moderate(self, mock_datetime):
+        """Rule 3 Scenario C: 5+ matches across 3+ domains triggers Moderate."""
+        mock_datetime.now.return_value = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.fromisoformat = datetime.fromisoformat
+
+        ev = create_base_evidence()
+        ev.origin_trace.match_count = 8
+        ev.origin_trace.unique_domains = 5
+        # No wayback or url_date data
+        ev.origin_trace.results = [
+            OriginTraceResult(url=f"https://site{i}.com/img", domain=f"site{i}.com")
+            for i in range(8)
+        ]
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Recirculated / Out of Context"
+        assert result.evidence_strength == EvidenceStrength.moderate
+        assert any("found across 8 sources" in e for e in result.evidence)
+
+    def test_rule_4_ela_triggers(self):
+        """Rule 4: ELA suspicious detection triggers Post-Processed."""
+        ev = create_base_evidence()
+        ev.metadata.ela_suspicious = True
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Post-Processed Image"
+        assert result.evidence_strength == EvidenceStrength.moderate
+        assert "Error Level Analysis detected inconsistent compression artifacts" in result.evidence
+
+    def test_rule_4_quantization_triggers(self):
+        """Rule 4: Quantization table fingerprint triggers Post-Processed."""
+        ev = create_base_evidence()
+        ev.metadata.quantization_software = "Adobe Photoshop (High Quality)"
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Post-Processed Image"
+        assert result.evidence_strength == EvidenceStrength.moderate
+        assert "JPEG quantization tables match Adobe Photoshop (High Quality)" in result.evidence
+
+    def test_rule_4_ela_plus_exif_no_duplicate_classification(self):
+        """When both ELA and EXIF detect editing, classification should appear once."""
+        ev = create_base_evidence()
+        ev.metadata.editing_software_detected = True
+        ev.metadata.ela_suspicious = True
+        ev.metadata.quantization_software = "GIMP"
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Post-Processed Image"
+        assert result.evidence_strength == EvidenceStrength.moderate
+        # All three evidence items present
+        assert "Editing software detected in EXIF metadata" in result.evidence
+        assert "Error Level Analysis detected inconsistent compression artifacts" in result.evidence
+        assert "JPEG quantization tables match GIMP" in result.evidence

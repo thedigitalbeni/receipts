@@ -25,6 +25,12 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
     # Appended immediately regardless of which rule wins the headline.
     if aggregated_evidence.metadata.editing_software_detected:
         evidence_list.append("Editing software detected in EXIF metadata")
+    if aggregated_evidence.metadata.ela_suspicious:
+        evidence_list.append("Error Level Analysis detected inconsistent compression artifacts")
+    if aggregated_evidence.metadata.quantization_software:
+        evidence_list.append(
+            f"JPEG quantization tables match {aggregated_evidence.metadata.quantization_software}"
+        )
 
     # Rule 1: C2PA contains ai_generated
     if aggregated_evidence.c2pa.ai_generated:
@@ -48,40 +54,83 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
             )
         evidence_list.append("Cryptographically signed camera manifest present and valid")
 
-    # Rule 3: Trace finds pHash/visual match indexed > 1 year ago.
+    # Rule 3: Trace finds visual match indexed > 1 year ago.
+    # Three trigger scenarios (first-match-wins for strength):
+    #   A) Wayback Machine confirms timestamp > 1 year → Strong
+    #   B) URL path/snippet date > 1 year → Moderate
+    #   C) 5+ matches across 3+ unique domains → Moderate
     is_rule_3 = False
+    rule_3_strength = None
+    rule_3_evidence_items = []
     now = datetime.now(timezone.utc)
     one_year_ago = now - timedelta(days=365)
     
+    # Scenario A: Wayback-confirmed timestamp > 1 year
     for result in aggregated_evidence.origin_trace.results:
         if result.earliest_wayback_timestamp:
             try:
-                # wayback timestamp format: '2019-03-15T12:00:00+00:00' (ISO 8601)
                 ts = result.earliest_wayback_timestamp.replace('Z', '+00:00')
                 dt = datetime.fromisoformat(ts)
                 if dt.tzinfo is None:
-                    # In case it's parsed as naive, assume UTC
                     dt = dt.replace(tzinfo=timezone.utc)
                 if dt < one_year_ago:
                     is_rule_3 = True
+                    rule_3_strength = EvidenceStrength.strong
+                    rule_3_evidence_items.append("Visually identical image indexed over a year ago (Wayback Machine confirmed)")
+                    rule_3_evidence_items.append("Origin context differs from current claim")
                     break
             except ValueError:
                 continue
 
+    # Scenario B: URL-extracted date > 1 year (fallback when Wayback fails)
+    if not is_rule_3:
+        for result in aggregated_evidence.origin_trace.results:
+            if result.earliest_url_date:
+                try:
+                    ts = result.earliest_url_date.replace('Z', '+00:00')
+                    dt = datetime.fromisoformat(ts)
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    if dt < one_year_ago:
+                        is_rule_3 = True
+                        rule_3_strength = EvidenceStrength.moderate
+                        rule_3_evidence_items.append(
+                            f"URL path suggests image dates to {dt.strftime('%B %Y')}"
+                        )
+                        rule_3_evidence_items.append("Origin context may differ from current claim")
+                        break
+                except ValueError:
+                    continue
+
+    # Scenario C: High match count across many domains
+    if not is_rule_3:
+        match_count = aggregated_evidence.origin_trace.match_count
+        unique_domains = aggregated_evidence.origin_trace.unique_domains
+        if match_count >= 5 and unique_domains >= 3:
+            is_rule_3 = True
+            rule_3_strength = EvidenceStrength.moderate
+            rule_3_evidence_items.append(
+                f"Visually identical image found across {match_count} sources on {unique_domains} different websites"
+            )
+
     if is_rule_3:
         if not classification:
             classification = "Recirculated / Out of Context"
-            evidence_strength = EvidenceStrength.strong
+            evidence_strength = rule_3_strength
             interpretation = (
                 "This exact image was already circulating before the current claim about it. "
                 "This is a strong signal the current context may be misleading, though "
                 "the tool cannot determine intent."
             )
-        evidence_list.append("Visually identical image indexed over a year ago")
-        evidence_list.append("Origin context differs from current claim")
+        evidence_list.extend(rule_3_evidence_items)
 
-    # Rule 4: editing_software_detected == true
-    if aggregated_evidence.metadata.editing_software_detected:
+    # Rule 4: editing detected (EXIF, ELA, or quantization)
+    is_rule_4 = (
+        aggregated_evidence.metadata.editing_software_detected
+        or aggregated_evidence.metadata.ela_suspicious
+        or aggregated_evidence.metadata.quantization_software is not None
+    )
+    if is_rule_4:
         if not classification:
             classification = "Post-Processed Image"
             evidence_strength = EvidenceStrength.moderate
@@ -91,8 +140,7 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
                 "most photos are lightly edited. Treat this as a prompt for closer "
                 "scrutiny, not a verdict."
             )
-        # We don't append to evidence_list here because the Standalone Check 
-        # already appended "Editing software detected in EXIF metadata".
+        # Evidence items were already appended in the Standalone Check above.
 
     # Rule 5: Fallback (All checks return empty)
     if not classification:

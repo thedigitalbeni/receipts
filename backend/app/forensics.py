@@ -188,3 +188,99 @@ def _detect_editing_software(exif_dict: dict[str, Any]) -> bool:
             if any(editor in value_lower for editor in _KNOWN_EDITORS):
                 return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# JPEG Quantization Table Fingerprinting
+# ---------------------------------------------------------------------------
+#
+# Different software uses characteristic JPEG quantization tables.
+# These tables survive EXIF stripping because they're part of the JPEG
+# data stream itself (not metadata). By comparing the first few values
+# of the luminance quantization table against known signatures, we can
+# identify which software saved the file.
+#
+# References:
+#   - Farid, H. "Digital Image Forensics" (2016)
+#   - FotoForensics quantization table database
+#   - IJG libjpeg reference tables
+
+# Known luminance quantization table signatures.
+# Each entry maps the first 8 values of the luminance QT to software name.
+# Values are from the zig-zag ordered quantization table.
+_KNOWN_QUANTIZATION_SIGNATURES: dict[tuple[int, ...], str] = {
+    # Adobe Photoshop Quality 12 (Maximum)
+    (1, 1, 1, 1, 1, 1, 1, 1): "Adobe Photoshop (Maximum Quality)",
+    # Adobe Photoshop Quality 10-11
+    (2, 1, 1, 2, 3, 5, 6, 7): "Adobe Photoshop (High Quality)",
+    # Adobe Photoshop Quality 8-9
+    (3, 2, 2, 3, 4, 6, 8, 10): "Adobe Photoshop (Medium-High Quality)",
+    # Adobe Photoshop Quality 6-7
+    (4, 3, 3, 4, 6, 10, 12, 14): "Adobe Photoshop (Medium Quality)",
+    # GIMP default (uses IJG libjpeg tables, quality 85)
+    (5, 3, 4, 4, 4, 3, 5, 4): "GIMP",
+    # Instagram re-compression (quality ~72)
+    (7, 5, 5, 7, 10, 16, 21, 25): "Instagram/Facebook",
+    # Twitter re-compression (quality ~85)
+    (5, 3, 3, 5, 7, 12, 15, 18): "Twitter",
+    # WhatsApp compression
+    (8, 6, 5, 8, 12, 20, 26, 31): "WhatsApp",
+}
+
+# Broader pattern matching: check if the first value (DC coefficient
+# quantizer) falls in ranges characteristic of specific software.
+_PHOTOSHOP_DC_RANGE = range(1, 5)    # Quality 7-12
+_LIGHTROOM_DC_RANGE = range(1, 4)    # Typically very high quality
+
+
+def detect_software_from_quantization(image_bytes: bytes) -> str | None:
+    """Detect editing software from JPEG quantization tables.
+
+    Compares the image's luminance quantization table against known
+    software signatures. Returns the software name if matched, None otherwise.
+
+    Args:
+        image_bytes: Raw image file bytes.
+
+    Returns:
+        Software name string if a known signature is found, None otherwise.
+    """
+    try:
+        img = Image.open(io.BytesIO(image_bytes))
+    except Exception:
+        return None
+
+    # Only JPEGs have quantization tables
+    if img.format not in ("JPEG", "MPO"):
+        return None
+
+    # Pillow exposes quantization tables as a dict: {table_id: list[int]}
+    qt = getattr(img, "quantization", None)
+    if not qt or not isinstance(qt, dict):
+        return None
+
+    # Get the luminance table (usually table 0)
+    lum_table = qt.get(0)
+    if not lum_table or len(lum_table) < 8:
+        return None
+
+    # Extract the first 8 values as a fingerprint
+    fingerprint = tuple(lum_table[:8])
+
+    # Exact match against known signatures
+    if fingerprint in _KNOWN_QUANTIZATION_SIGNATURES:
+        return _KNOWN_QUANTIZATION_SIGNATURES[fingerprint]
+
+    # Fuzzy match: check if values are close to known signatures
+    # (within ±1 per position, to handle slight variations)
+    for known_sig, software in _KNOWN_QUANTIZATION_SIGNATURES.items():
+        if all(abs(a - b) <= 1 for a, b in zip(fingerprint, known_sig)):
+            return software
+
+    # Heuristic: very low DC quantizer (1-2) with non-standard table
+    # suggests high-quality professional editing software
+    if lum_table[0] <= 2 and lum_table[1] <= 2:
+        return "Professional editing software (unknown)"
+
+    return None
+

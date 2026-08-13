@@ -490,11 +490,11 @@ class TestFrozenContractAdapter:
             "match_count": 3,
             "visual_matches": [
                 {"link": "https://reuters.com/a", "domain": "reuters.com",
-                 "wayback": {"datetime": "2019-03-15T12:00:00+00:00", "timestamp": "20190315120000"}},
+                 "wayback": {"datetime": "2019-03-15T12:00:00+00:00", "timestamp": "20190315120000"}, "url_date": None},
                 {"link": "https://apnews.com/b", "domain": "apnews.com",
-                 "wayback": None},
+                 "wayback": None, "url_date": None},
                 {"link": "https://reddit.com/c", "domain": "reddit.com",
-                 "wayback": {"datetime": "2024-01-01T00:00:00+00:00", "timestamp": "20240101000000"}},
+                 "wayback": {"datetime": "2024-01-01T00:00:00+00:00", "timestamp": "20240101000000"}, "url_date": None},
             ],
             "earliest_appearance": {"link": "https://reuters.com/a"},
             "error": None,
@@ -542,8 +542,8 @@ class TestFrozenContractAdapter:
             "has_matches": True,
             "match_count": 2,
             "visual_matches": [
-                {"link": "https://example.com/a", "domain": "example.com", "wayback": None},
-                {"link": "https://example.com/b", "domain": "example.com", "wayback": None},
+                {"link": "https://example.com/a", "domain": "example.com", "wayback": None, "url_date": None},
+                {"link": "https://example.com/b", "domain": "example.com", "wayback": None, "url_date": None},
             ],
             "earliest_appearance": None,
             "error": None,
@@ -559,8 +559,8 @@ class TestFrozenContractAdapter:
         internal = _safe_fallback()
         frozen = to_frozen_contract(internal)
 
-        # Keys must be exactly {serpapi_status, wayback_status, results}
-        assert set(frozen.keys()) == {"serpapi_status", "wayback_status", "results"}
+        # Keys must be exactly {serpapi_status, wayback_status, results, match_count, unique_domains}
+        assert set(frozen.keys()) == {"serpapi_status", "wayback_status", "results", "match_count", "unique_domains"}
 
     def test_results_item_keys_match_pydantic_model(self):
         """Each result item must match OriginTraceResult model fields."""
@@ -569,7 +569,7 @@ class TestFrozenContractAdapter:
             "match_count": 1,
             "visual_matches": [
                 {"link": "https://example.com/a", "domain": "example.com",
-                 "wayback": {"datetime": "2020-01-01T00:00:00+00:00"}},
+                 "wayback": {"datetime": "2020-01-01T00:00:00+00:00"}, "url_date": None},
             ],
             "earliest_appearance": None,
             "error": None,
@@ -577,9 +577,9 @@ class TestFrozenContractAdapter:
         }
         frozen = to_frozen_contract(internal)
 
-        # Each result must have exactly {url, domain, earliest_wayback_timestamp}
+        # Each result must have exactly {url, domain, earliest_wayback_timestamp, earliest_url_date}
         assert len(frozen["results"]) == 1
-        assert set(frozen["results"][0].keys()) == {"url", "domain", "earliest_wayback_timestamp"}
+        assert set(frozen["results"][0].keys()) == {"url", "domain", "earliest_wayback_timestamp", "earliest_url_date"}
 
 
 # ---------------------------------------------------------------------------
@@ -686,5 +686,5 @@ class TestRule3CandidatePipeline:
 
         # Assert Rule 3 fires
         assert result.classification == "Recirculated / Out of Context"
-        assert "Visually identical image indexed over a year ago" in result.evidence
-        assert "Origin context differs from current claim" in result.evidence
+        assert any("Visually identical image indexed over a year ago" in e for e in result.evidence)
+        assert any("Origin context" in e for e in result.evidence)

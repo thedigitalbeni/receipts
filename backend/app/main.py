@@ -48,12 +48,13 @@ from app.security import (
     download_image_from_url,
     extract_social_image_url,
 )
-from app.forensics import compute_phash, extract_exif
+from app.forensics import compute_phash, extract_exif, detect_software_from_quantization
 # Fix #1: Import the actual functions from provenance.py (not the
 # non-existent c2pa_maps_to_rule_1_or_2).
 from app.provenance import extract_c2pa_manifest, detect_ai_generation, detect_camera_signature
 from app.origin_trace import query_origin_trace, to_frozen_contract
 from app.rules import evaluate_evidence
+from app.ela import compute_ela
 # Fix #6: Import get_receipt_by_sha256 for the SHA-256 cache layer.
 from app.db import upload_image_to_storage, insert_receipt, get_receipt_by_sha256
 
@@ -241,6 +242,10 @@ async def verify(
         phash_val = compute_phash(image_bytes)
         exif_data = extract_exif(image_bytes)
 
+        # Step 1b: ELA + Quantization analysis (Rule 4 improvements)
+        ela_result = compute_ela(image_bytes)
+        quant_software = detect_software_from_quantization(image_bytes)
+
         # Step 2: Provenance (M4)
         # Fix #1: Use detect_ai_generation() and detect_camera_signature()
         # from provenance.py to populate C2PAEvidence fields directly.
@@ -280,6 +285,8 @@ async def verify(
                 raw_exif=exif_data if exif_data else None,
                 editing_software_detected=exif_data.get("editing_software_detected", False)
                     if exif_data else False,
+                ela_suspicious=ela_result.get("is_suspicious", False),
+                quantization_software=quant_software,
             ),
             origin_trace=origin_trace_evidence,
             duplicate_detection=DuplicateDetectionEvidence(
