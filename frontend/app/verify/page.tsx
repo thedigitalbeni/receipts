@@ -2,7 +2,13 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan, FileSearch, Code, ZoomIn, ZoomOut, Info, Clock, Database, ChevronDown } from 'lucide-react';
+import {
+  UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan,
+  FileSearch, Code, ZoomIn, ZoomOut, Info, Clock, Database, ChevronDown,
+  ArrowLeft, ShieldCheck, Brain, Globe, Cpu, Fingerprint, CheckCircle2,
+  AlertTriangle, XCircle, HelpCircle, ExternalLink,
+} from 'lucide-react';
+import Link from 'next/link';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 // ---------------------------------------------------------------------------
@@ -27,10 +33,11 @@ interface VerifyResult {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 const LOADING_MESSAGES = [
-  'Extracting metadata...',
-  'Checking C2PA signatures...',
-  'Querying origin trace...',
-  'Applying rules engine...',
+  'Extracting metadata…',
+  'Checking C2PA signatures…',
+  'Running Error Level Analysis…',
+  'Querying origin trace…',
+  'Applying rules engine…',
 ];
 
 /** Map raw backend errors to user-friendly messages */
@@ -39,7 +46,7 @@ function friendlyError(raw: string): { title: string; message: string; hint?: st
   if (lower.includes('could not fetch html') || lower.includes('no social image metadata'))
     return { title: 'Not a Direct Image', message: 'This URL points to a webpage, not an image file.', hint: 'Right-click the image → "Copy image address" and paste that URL instead.' };
   if (lower.includes('content type') || lower.includes('not a valid image') || lower.includes('url must point directly'))
-    return { title: 'Invalid Image URL', message: 'The URL doesn\'t point to a supported image format.', hint: 'Make sure the URL ends in .jpg, .png, or .webp.' };
+    return { title: 'Invalid Image URL', message: "The URL doesn't point to a supported image format.", hint: 'Make sure the URL ends in .jpg, .png, or .webp.' };
   if (lower.includes('too large') || lower.includes('exceeds'))
     return { title: 'File Too Large', message: 'The image exceeds the 15 MB size limit.', hint: 'Try compressing the image or using a smaller version.' };
   if (lower.includes('rate limit'))
@@ -53,17 +60,55 @@ function friendlyError(raw: string): { title: string; message: string; hint?: st
   return { title: 'Verification Failed', message: raw.length > 120 ? raw.slice(0, 120) + '…' : raw };
 }
 
-const STRENGTH_COLORS: Record<string, string> = {
-  Strong: 'text-teal-400 border-teal-400/40 bg-teal-400/10 shadow-[0_0_15px_rgba(45,212,191,0.2)]',
-  Moderate: 'text-amber-400 border-amber-400/40 bg-amber-400/10 shadow-[0_0_15px_rgba(251,191,36,0.2)]',
-  Limited: 'text-zinc-400 border-zinc-400/40 bg-zinc-400/10',
+// Classification → visual config
+const CLASSIFICATION_CONFIG: Record<string, {
+  color: string; border: string; bg: string; glow: string; icon: React.ReactNode; strengthColor: string;
+}> = {
+  'AI-Generated Content': {
+    color: 'text-purple-300', border: 'border-purple-500/40', bg: 'bg-purple-500/10',
+    glow: 'shadow-[0_0_40px_rgba(168,85,247,0.15)]',
+    icon: <Brain className="w-5 h-5 text-purple-400" />,
+    strengthColor: 'text-purple-400 border-purple-400/40 bg-purple-400/10',
+  },
+  'Verified Camera Original': {
+    color: 'text-teal-300', border: 'border-teal-500/40', bg: 'bg-teal-500/10',
+    glow: 'shadow-[0_0_40px_rgba(45,212,191,0.15)]',
+    icon: <ShieldCheck className="w-5 h-5 text-teal-400" />,
+    strengthColor: 'text-teal-400 border-teal-400/40 bg-teal-400/10',
+  },
+  'Recirculated / Out of Context': {
+    color: 'text-amber-300', border: 'border-amber-500/40', bg: 'bg-amber-500/10',
+    glow: 'shadow-[0_0_40px_rgba(251,191,36,0.15)]',
+    icon: <Globe className="w-5 h-5 text-amber-400" />,
+    strengthColor: 'text-amber-400 border-amber-400/40 bg-amber-400/10',
+  },
+  'Post-Processed Image': {
+    color: 'text-orange-300', border: 'border-orange-500/40', bg: 'bg-orange-500/10',
+    glow: 'shadow-[0_0_40px_rgba(251,146,60,0.15)]',
+    icon: <Cpu className="w-5 h-5 text-orange-400" />,
+    strengthColor: 'text-orange-400 border-orange-400/40 bg-orange-400/10',
+  },
+  'Unverified — No Provenance Found': {
+    color: 'text-zinc-300', border: 'border-zinc-500/40', bg: 'bg-zinc-500/10',
+    glow: 'shadow-[0_0_20px_rgba(113,113,122,0.1)]',
+    icon: <HelpCircle className="w-5 h-5 text-zinc-400" />,
+    strengthColor: 'text-zinc-400 border-zinc-400/40 bg-zinc-400/10',
+  },
 };
 
+const DEFAULT_CONFIG = {
+  color: 'text-white', border: 'border-white/20', bg: 'bg-white/5', glow: '',
+  icon: <CheckCircle className="w-5 h-5 text-teal-400" />,
+  strengthColor: 'text-teal-400 border-teal-400/40 bg-teal-400/10',
+};
 
+// ---------------------------------------------------------------------------
+// ZoomableReceipt
+// ---------------------------------------------------------------------------
 function ZoomableReceipt({ src }: { src: string }) {
   const [zoomed, setZoomed] = useState(false);
   return (
-    <div 
+    <div
       className={`relative w-full h-full rounded-xl bg-black/50 border border-white/5 flex items-center justify-center ${zoomed ? 'overflow-auto' : 'overflow-hidden'}`}
       onClick={() => setZoomed(!zoomed)}
       role="button"
@@ -71,7 +116,7 @@ function ZoomableReceipt({ src }: { src: string }) {
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setZoomed(!zoomed); }}
     >
       <div className="absolute bottom-4 right-4 z-40 pointer-events-none bg-black/60 text-white/70 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md flex items-center gap-2 border border-white/10">
-        {zoomed ? <ZoomOut className="w-4 h-4"/> : <ZoomIn className="w-4 h-4"/>}
+        {zoomed ? <ZoomOut className="w-4 h-4" /> : <ZoomIn className="w-4 h-4" />}
         {zoomed ? 'Click to zoom out' : 'Click to zoom in'}
       </div>
       <img
@@ -85,10 +130,8 @@ function ZoomableReceipt({ src }: { src: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Component
+// Interface
 // ---------------------------------------------------------------------------
-
-
 interface ImageDetails {
   name: string;
   size: string;
@@ -96,10 +139,11 @@ interface ImageDetails {
   source: string;
 }
 
+// ---------------------------------------------------------------------------
+// Main Component
+// ---------------------------------------------------------------------------
 export default function ReceiptsPage() {
   const [imageDetails, setImageDetails] = useState<ImageDetails | null>(null);
-
-  // ---- state ----
   const [appState, setAppState] = useState<AppState>('DROPZONE');
   const [dragActive, setDragActive] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -110,7 +154,7 @@ export default function ReceiptsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ---- loading text rotation ----
+  // loading text rotation
   useEffect(() => {
     if (appState !== 'ANALYZING') return;
     const id = setInterval(() => {
@@ -119,557 +163,475 @@ export default function ReceiptsPage() {
     return () => clearInterval(id);
   }, [appState]);
 
-  // ---- drag handlers ----
+  // drag handlers
   const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     if (e.type === 'dragenter' || e.type === 'dragover') setDragActive(true);
     else if (e.type === 'dragleave') setDragActive(false);
   }, []);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     setDragActive(false);
-
     const uriList = e.dataTransfer.getData('text/uri-list');
     const plainText = e.dataTransfer.getData('text/plain');
     const url = uriList || plainText;
-    
     if (url && url.startsWith('http')) {
-      setImageUrl(url);
-      setThumbnail(url);
-      setAppState('ANALYZING');
-      setLoadingIdx(0);
-      await sendToApi(null, url);
-      return;
+      setImageUrl(url); setThumbnail(url);
+      setAppState('ANALYZING'); setLoadingIdx(0);
+      await sendToApi(null, url); return;
     }
-
-    if (e.dataTransfer.files?.[0]) {
-      await processFile(e.dataTransfer.files[0]);
-    }
+    if (e.dataTransfer.files?.[0]) await processFile(e.dataTransfer.files[0]);
   }, []);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) await processFile(e.target.files[0]);
   };
 
-  // ---- file validation ----
   const processFile = async (file: File) => {
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      setErrorMsg('Please upload a valid image (JPG, PNG, or WebP).');
-      setAppState('ERROR');
-      return;
-    }
-    if (file.size > 15 * 1024 * 1024) {
-      setErrorMsg('File size must be under 15 MB.');
-      setAppState('ERROR');
-      return;
-    }
+    if (!validTypes.includes(file.type)) { setErrorMsg('Please upload a valid image (JPG, PNG, or WebP).'); setAppState('ERROR'); return; }
+    if (file.size > 15 * 1024 * 1024) { setErrorMsg('File size must be under 15 MB.'); setAppState('ERROR'); return; }
     if (thumbnail) URL.revokeObjectURL(thumbnail);
     const objectUrl = URL.createObjectURL(file);
     setThumbnail(objectUrl);
-    
     const img = new window.Image();
-    img.onload = () => {
-      setImageDetails({
-        name: file.name,
-        size: (file.size / 1024 / 1024).toFixed(2) + ' MB',
-        dimensions: `${img.width} × ${img.height} px`,
-        source: 'Local Upload',
-      });
-    };
+    img.onload = () => setImageDetails({ name: file.name, size: (file.size / 1024 / 1024).toFixed(2) + ' MB', dimensions: `${img.width} × ${img.height} px`, source: 'Local Upload' });
     img.src = objectUrl;
-
-    setAppState('ANALYZING');
-    setLoadingIdx(0);
+    setAppState('ANALYZING'); setLoadingIdx(0);
     await sendToApi(file);
   };
 
-  // ---- URL submission ----
   const onUrlSubmit = async () => {
     if (!imageUrl.trim()) return;
     setThumbnail(imageUrl);
-    
     const img = new window.Image();
     img.onload = () => {
       let name = 'Image from URL';
       try { name = new URL(imageUrl).pathname.split('/').pop() || name; } catch {}
-      setImageDetails({
-        name,
-        size: 'Unknown',
-        dimensions: `${img.width} × ${img.height} px`,
-        source: 'URL Input',
-      });
+      setImageDetails({ name, size: 'Unknown', dimensions: `${img.width} × ${img.height} px`, source: 'URL Input' });
     };
     img.src = imageUrl;
-
-    setAppState('ANALYZING');
-    setLoadingIdx(0);
+    setAppState('ANALYZING'); setLoadingIdx(0);
     await sendToApi(null, imageUrl);
   };
 
-  // ---- API call ----
   const sendToApi = async (file: File | null, url?: string) => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000);
-
     try {
       const formData = new FormData();
-      if (file) {
-        formData.append('input_type', 'file');
-        formData.append('file', file);
-      } else if (url) {
-        formData.append('input_type', 'url');
-        formData.append('image_url', url);
-      }
-
-      const res = await fetch(`${API_URL}/verify`, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
-      });
+      if (file) { formData.append('input_type', 'file'); formData.append('file', file); }
+      else if (url) { formData.append('input_type', 'url'); formData.append('image_url', url); }
+      const res = await fetch(`${API_URL}/verify`, { method: 'POST', body: formData, signal: controller.signal });
       clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        const errBody = await res.json().catch(() => null);
-        throw new Error(errBody?.detail || `Server error (${res.status})`);
-      }
-
+      if (!res.ok) { const errBody = await res.json().catch(() => null); throw new Error(errBody?.detail || `Server error (${res.status})`); }
       const data: VerifyResult = await res.json();
-      
-      // Override interpretation for Rule 5 missing provenance
       if (data.classification === 'Unverified — No Provenance Found') {
         data.interpretation = 'No cryptographic signatures or structural metadata were found. Social media platforms (like Twitter/Instagram) typically strip this metadata to protect user privacy and save space. We can confirm there is no data, rather than a failure to find it.';
       }
-      
-      setResult(data);
-      setAppState('RESULT');
+      setResult(data); setAppState('RESULT');
     } catch (err: unknown) {
       clearTimeout(timeoutId);
       let msg = 'Network error';
-      if (err instanceof Error) {
-        if (err.name === 'AbortError') {
-          msg = 'Verification timed out. The server might be warming up, please try again.';
-        } else {
-          msg = err.message;
-        }
-      }
-      setErrorMsg(msg);
-      setAppState('ERROR');
+      if (err instanceof Error) msg = err.name === 'AbortError' ? 'Verification timed out. The server might be warming up, please try again.' : err.message;
+      setErrorMsg(msg); setAppState('ERROR');
     }
   };
 
-  // ---- reset ----
   const resetState = () => {
     if (thumbnail) URL.revokeObjectURL(thumbnail);
-    setAppState('DROPZONE');
-    setErrorMsg(null);
-    setThumbnail(null);
-    setImageUrl('');
-    setResult(null);
-    setImageDetails(null);
+    setAppState('DROPZONE'); setErrorMsg(null); setThumbnail(null);
+    setImageUrl(''); setResult(null); setImageDetails(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // ---- share / download ----
   const handleShare = async () => {
     if (!result) return;
     const receiptUrl = `/api/receipt/${result.id}`;
-
     try {
       const imgRes = await fetch(receiptUrl);
       const blob = await imgRes.blob();
       const file = new File([blob], `receipt-${result.id}.png`, { type: 'image/png' });
-
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          title: 'Receipts — Verification Result',
-          files: [file],
-        });
-        return;
+        await navigator.share({ title: 'Receipts — Verification Result', files: [file] }); return;
       }
-    } catch {
-      // Fall through to download fallback
-    }
-
+    } catch { /* fall through */ }
     const a = document.createElement('a');
-    a.href = receiptUrl;
-    a.download = `receipt-${result.id}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    a.href = receiptUrl; a.download = `receipt-${result.id}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
   };
 
-  const handleUrlKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') onUrlSubmit();
-  };
+  const handleUrlKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') onUrlSubmit(); };
+
+  const cfg = result ? (CLASSIFICATION_CONFIG[result.classification] ?? DEFAULT_CONFIG) : DEFAULT_CONFIG;
 
   // ====================================================================
   // RENDER
   // ====================================================================
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden bg-[#0A0A0A] text-white">
-      {/* Ambient Cyber Glows */}
-      <div className="pointer-events-none fixed inset-0" aria-hidden="true">
-        <motion.div 
-          animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute top-[-20%] left-[10%] w-[600px] h-[600px] rounded-full bg-teal-500/10 blur-[120px]" 
-        />
-        <motion.div 
-          animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-          className="absolute bottom-[-10%] right-[5%] w-[500px] h-[500px] rounded-full bg-purple-600/10 blur-[100px]" 
-        />
+    <main className="min-h-screen flex flex-col bg-[#0A0A0A] text-white relative overflow-x-hidden">
+
+      {/* Ambient glows */}
+      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
+        <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }} transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+          className="absolute top-[-20%] left-[10%] w-[600px] h-[600px] rounded-full bg-teal-500/10 blur-[120px]" />
+        <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }} transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
+          className="absolute bottom-[-10%] right-[5%] w-[500px] h-[500px] rounded-full bg-purple-600/10 blur-[100px]" />
       </div>
 
-      {/* Header */}
-      <div className="fixed top-0 left-0 right-0 z-50 flex items-center justify-center py-6 backdrop-blur-md bg-[#0A0A0A]/50 border-b border-white/5">
-        <h1 className="tracking-[0.4em] text-xs font-bold uppercase text-white/60">
-          Receipts
-        </h1>
-      </div>
+      {/* ── Nav Header ── */}
+      <header className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-[#0A0A0A]/60 border-b border-white/5">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 text-white/50 hover:text-white/80 transition-colors text-sm font-medium">
+            <ArrowLeft className="w-4 h-4" />
+            Back
+          </Link>
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-teal-500" />
+            <span className="tracking-[0.3em] text-xs font-bold uppercase text-white/60">Receipts</span>
+          </div>
+          <div className="w-16" /> {/* spacer */}
+        </div>
+      </header>
 
-      {/* Content Container */}
-      <div className="w-full max-w-md mx-auto flex flex-col items-center z-10 mt-12">
+      {/* ── Main content ── */}
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 py-24">
         <AnimatePresence mode="wait">
-          
-          {/* ==================== DROPZONE ==================== */}
+
+          {/* ══════════════ DROPZONE ══════════════ */}
           {appState === 'DROPZONE' && (
-            <motion.div 
+            <motion.div
               key="dropzone"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.4 }}
-              className="w-full flex flex-col items-center gap-8"
+              className="w-full max-w-2xl flex flex-col items-center gap-8"
             >
-              <div className="text-center space-y-4 mb-4">
-                <h2 className="text-4xl sm:text-5xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-teal-400 to-purple-500 leading-tight">
-                  Don&apos;t share it.<br/>Prove it.
-                </h2>
-                <p className="text-sm text-white/50 max-w-sm mx-auto font-medium">
-                  Verify provenance, detect AI, and trace origins instantly.
+              {/* Hero text */}
+              <div className="text-center space-y-4">
+                <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-teal-400 via-white/90 to-purple-500 leading-tight pb-1">
+                  Don&apos;t share it.<br />Prove it.
+                </h1>
+                <p className="text-sm text-white/50 max-w-md mx-auto leading-relaxed">
+                  Paste a URL or drop an image file — our 5-layer forensic pipeline runs in seconds.
                 </p>
               </div>
 
+              {/* Dropzone */}
               <motion.div
                 id="dropzone"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className={`group relative w-full rounded-3xl flex flex-col items-center justify-center cursor-pointer py-16 px-6 overflow-hidden backdrop-blur-xl transition-all duration-300 ${
-                  dragActive 
-                    ? 'border-2 border-teal-400 bg-teal-400/10 shadow-[0_0_30px_rgba(45,212,191,0.2)]' 
-                    : 'border border-white/10 bg-white/5 hover:border-transparent hover:bg-white/10 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.1)] hover:shadow-[0_0_20px_rgba(45,212,191,0.3),inset_0_0_0_2px_rgba(45,212,191,0.5)]'
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                className={`group relative w-full rounded-3xl flex flex-col items-center justify-center cursor-pointer py-20 px-8 overflow-hidden backdrop-blur-xl transition-all duration-300 ${
+                  dragActive
+                    ? 'border-2 border-teal-400 bg-teal-400/10 shadow-[0_0_40px_rgba(45,212,191,0.2)]'
+                    : 'border border-white/10 bg-white/[0.03] hover:border-teal-400/40 hover:bg-white/[0.06] hover:shadow-[0_0_30px_rgba(45,212,191,0.1)]'
                 }`}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
+                onDragEnter={handleDrag} onDragLeave={handleDrag}
+                onDragOver={handleDrag} onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
-                {/* Magic glow border */}
-                <div className="absolute inset-[-2px] rounded-3xl bg-gradient-to-r from-teal-400 to-purple-500 opacity-0 transition-opacity duration-500 group-hover:opacity-100 pointer-events-none -z-10" />
-                <div className="absolute inset-[1px] rounded-[23px] bg-[#0A0A0A] pointer-events-none -z-10 group-hover:opacity-100 opacity-0 transition-opacity duration-500" />
-                
-                {/* Subtle pulsing background for the empty state */}
-                <motion.div 
-                  animate={{ opacity: [0.1, 0.3, 0.1] }}
-                  transition={{ duration: 3, repeat: Infinity }}
-                  className="absolute inset-0 bg-gradient-to-b from-teal-500/5 to-transparent pointer-events-none"
-                />
-                
-                <input
-                  ref={fileInputRef}
-                  id="file-input"
-                  type="file"
-                  className="hidden"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handleFileChange}
-                  aria-label="Upload image file"
-                />
-                
-                <UploadCloud className={`w-12 h-12 mb-5 transition-colors ${dragActive ? 'text-teal-400' : 'text-white/40'}`} />
+                {/* Animated bg gradient */}
+                <motion.div animate={{ opacity: [0.05, 0.15, 0.05] }} transition={{ duration: 4, repeat: Infinity }}
+                  className="absolute inset-0 bg-gradient-to-b from-teal-500/10 to-transparent pointer-events-none" />
+
+                {/* Corner accents */}
+                <div className="absolute top-4 left-4 w-5 h-5 border-t-2 border-l-2 border-teal-400/40 rounded-tl-sm" />
+                <div className="absolute top-4 right-4 w-5 h-5 border-t-2 border-r-2 border-teal-400/40 rounded-tr-sm" />
+                <div className="absolute bottom-4 left-4 w-5 h-5 border-b-2 border-l-2 border-teal-400/40 rounded-bl-sm" />
+                <div className="absolute bottom-4 right-4 w-5 h-5 border-b-2 border-r-2 border-teal-400/40 rounded-br-sm" />
+
+                <input ref={fileInputRef} id="file-input" type="file" className="hidden"
+                  accept="image/jpeg,image/png,image/webp" onChange={handleFileChange} aria-label="Upload image file" />
+
+                <div className={`w-16 h-16 rounded-2xl mb-5 flex items-center justify-center transition-colors ${dragActive ? 'bg-teal-400/20 border border-teal-400/40' : 'bg-white/5 border border-white/10'}`}>
+                  <UploadCloud className={`w-8 h-8 transition-colors ${dragActive ? 'text-teal-400' : 'text-white/40 group-hover:text-white/60'}`} />
+                </div>
                 <p className="text-lg font-semibold text-white/90">
-                  {dragActive ? 'Drop it here!' : 'Drop image or click'}
+                  {dragActive ? 'Drop it here!' : 'Drop image or click to upload'}
                 </p>
-                <p className="text-xs text-white/40 mt-2 font-medium tracking-wide">
-                  JPG, PNG, WebP • Max 15MB
+                <p className="text-xs text-white/35 mt-2 font-medium tracking-wide">
+                  JPEG · PNG · WebP &nbsp;·&nbsp; Max 15 MB
                 </p>
               </motion.div>
 
+              {/* Divider */}
               <div className="flex items-center w-full gap-4 text-white/20 text-xs font-bold uppercase tracking-widest">
-                <div className="h-px bg-white/10 flex-1" />
-                or
-                <div className="h-px bg-white/10 flex-1" />
+                <div className="h-px bg-white/10 flex-1" />or<div className="h-px bg-white/10 flex-1" />
               </div>
 
-              <div className="flex w-full gap-2 relative">
-                <input
-                  id="url-input"
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  onKeyDown={handleUrlKeyDown}
-                  placeholder="Paste image URL"
-                  aria-label="Image URL"
-                  className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white placeholder-white/30 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 focus:bg-white/10 transition-all shadow-inner"
-                />
+              {/* URL input */}
+              <div className="flex w-full gap-3">
+                <div className="relative flex-1">
+                  <ExternalLink className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
+                  <input
+                    id="url-input" type="url" value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    onKeyDown={handleUrlKeyDown}
+                    placeholder="https://example.com/image.jpg"
+                    aria-label="Image URL"
+                    className="w-full pl-11 pr-4 bg-white/5 border border-white/10 rounded-2xl py-4 text-sm text-white placeholder-white/25 focus:outline-none focus:border-teal-400/60 focus:ring-1 focus:ring-teal-400/30 focus:bg-white/8 transition-all"
+                  />
+                </div>
                 <button
-                  id="verify-url-btn"
-                  onClick={onUrlSubmit}
+                  id="verify-url-btn" onClick={onUrlSubmit}
                   disabled={!imageUrl.trim()}
-                  className="bg-teal-500/20 hover:bg-teal-500/30 disabled:opacity-30 disabled:cursor-not-allowed text-teal-300 border border-teal-500/30 px-6 py-4 rounded-2xl text-sm font-bold tracking-wide transition-all shadow-[0_0_15px_rgba(45,212,191,0.1)] hover:shadow-[0_0_25px_rgba(45,212,191,0.25)]"
+                  className="bg-teal-500 hover:bg-teal-400 disabled:opacity-30 disabled:cursor-not-allowed text-black font-bold px-7 py-4 rounded-2xl text-sm tracking-wide transition-all shadow-[0_0_20px_rgba(45,212,191,0.2)] hover:shadow-[0_0_30px_rgba(45,212,191,0.4)] disabled:shadow-none"
                 >
                   Verify
                 </button>
               </div>
+
+              {/* Capability pills */}
+              <div className="flex flex-wrap justify-center gap-2 mt-2">
+                {['C2PA Manifest', 'EXIF Metadata', 'Error Level Analysis', 'Quantization Fingerprint', 'Origin Trace'].map((c) => (
+                  <span key={c} className="text-[11px] text-white/35 bg-white/5 border border-white/10 px-3 py-1 rounded-full font-medium">{c}</span>
+                ))}
+              </div>
             </motion.div>
           )}
 
-          {/* ==================== ANALYZING ==================== */}
+          {/* ══════════════ ANALYZING ══════════════ */}
           {appState === 'ANALYZING' && (
-            <motion.div 
+            <motion.div
               key="analyzing"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 1.05 }}
               transition={{ duration: 0.5 }}
-              className="w-full flex flex-col items-center gap-10"
+              className="w-full max-w-sm flex flex-col items-center gap-10"
             >
+              {/* Scanner box */}
               <div className="relative w-56 h-56 rounded-3xl overflow-hidden bg-white/5 border border-white/10 shadow-[0_0_40px_rgba(45,212,191,0.15)]">
                 {thumbnail && (
-                  <img
-                    src={thumbnail}
-                    alt="Analyzing"
-                    className="w-full h-full object-cover opacity-30 grayscale blur-[2px]"
-                  />
+                  <img src={thumbnail} alt="Analyzing" className="w-full h-full object-cover opacity-25 grayscale blur-[2px]" />
                 )}
-                
-                {/* Cyber grid overlay */}
+                {/* Grid overlay */}
                 <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
-                
-                <motion.div 
-                  animate={{ 
-                    y: [0, 224, 224, 0, 0],
-                    scaleY: [1, 1, -1, -1, 1]
-                  }}
-                  transition={{ 
-                    duration: 3, 
-                    repeat: Infinity, 
-                    ease: "linear",
-                    times: [0, 0.499, 0.5, 0.999, 1]
-                  }}
-                  className="absolute left-0 right-0 h-32 -top-32 bg-gradient-to-b from-transparent to-teal-400/40 z-10 border-b-[3px] border-teal-400 shadow-[0_20px_30px_rgba(45,212,191,0.4)] origin-bottom" 
+                {/* Scan beam */}
+                <motion.div
+                  animate={{ y: [0, 224, 224, 0, 0], scaleY: [1, 1, -1, -1, 1] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'linear', times: [0, 0.499, 0.5, 0.999, 1] }}
+                  className="absolute left-0 right-0 h-32 -top-32 bg-gradient-to-b from-transparent to-teal-400/40 z-10 border-b-[3px] border-teal-400 shadow-[0_20px_30px_rgba(45,212,191,0.4)] origin-bottom"
                 />
-                
-                {/* UI Corner Accents */}
+                {/* Corner accents */}
                 <div className="absolute top-3 left-3 w-4 h-4 border-t-2 border-l-2 border-teal-400" />
                 <div className="absolute top-3 right-3 w-4 h-4 border-t-2 border-r-2 border-teal-400" />
                 <div className="absolute bottom-3 left-3 w-4 h-4 border-b-2 border-l-2 border-teal-400" />
                 <div className="absolute bottom-3 right-3 w-4 h-4 border-b-2 border-r-2 border-teal-400" />
-                
-                {/* Center radar icon */}
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <Scan className="w-12 h-12 text-teal-400/50 animate-pulse" />
+                {/* Center icon */}
+                <div className="absolute inset-0 flex items-center justify-center z-20">
+                  <Scan className="w-12 h-12 text-teal-400/60 animate-pulse" />
                 </div>
               </div>
 
-              <div className="text-center space-y-6 w-full">
-                <div className="min-h-[40px] flex items-center justify-center">
+              {/* Loading text */}
+              <div className="text-center space-y-5 w-full">
+                <div className="min-h-[36px] flex items-center justify-center">
                   <AnimatePresence mode="wait">
-                    <motion.div
-                      key={loadingIdx}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.3 }}
-                      className="h-8 flex items-center justify-center gap-3 text-lg font-semibold text-teal-300 drop-shadow-[0_0_8px_rgba(45,212,191,0.5)]"
-                    >
-                      <FileSearch className="w-5 h-5 flex-shrink-0" />
+                    <motion.div key={loadingIdx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}
+                      className="flex items-center gap-2.5 text-base font-semibold text-teal-300 drop-shadow-[0_0_10px_rgba(45,212,191,0.5)]">
+                      <FileSearch className="w-5 h-5 shrink-0" />
                       {LOADING_MESSAGES[loadingIdx]}
                     </motion.div>
                   </AnimatePresence>
                 </div>
-                
                 <div className="w-64 h-1.5 bg-white/10 rounded-full overflow-hidden mx-auto relative">
-                  <motion.div 
-                    className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-teal-400 via-purple-500 to-teal-400 rounded-full"
-                    animate={{ width: '100%', x: ['-100%', '100%'] }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  />
+                  <motion.div className="absolute top-0 bottom-0 left-0 bg-gradient-to-r from-teal-400 via-purple-500 to-teal-400 rounded-full"
+                    animate={{ x: ['-100%', '200%'] }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+                    style={{ width: '60%' }} />
                 </div>
+                <p className="text-xs text-white/30">Running 5-layer forensic pipeline…</p>
               </div>
             </motion.div>
           )}
 
-          {/* ==================== RESULT ==================== */}
+          {/* ══════════════ RESULT ══════════════ */}
           {appState === 'RESULT' && result && (
-            <motion.div 
+            <motion.div
               key="result"
-              initial={{ opacity: 0, y: 40, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="w-full flex flex-col items-center gap-6"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+              className="w-full max-w-5xl flex flex-col gap-6"
             >
-              <div className="text-center space-y-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 w-full max-w-xs shadow-xl relative overflow-hidden">
-                {/* Result header glow */}
-                <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-1 bg-teal-400 shadow-[0_0_20px_rgba(45,212,191,1)]" />
-                
-                <p className="text-[10px] uppercase tracking-[0.2em] text-white/50 font-bold flex items-center justify-center gap-2">
-                  <CheckCircle className="w-3 h-3 text-teal-400" /> Analysis Complete
-                </p>
-                <h3 className="text-xl font-bold text-white leading-tight">
-                  {result.classification}
-                </h3>
-                <div className="flex justify-center pt-1">
-                  <span className={`inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg border ${STRENGTH_COLORS[result.evidence_strength] || STRENGTH_COLORS.Limited}`}>
+              {/* ── Classification Header ── */}
+              <div className={`flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl border ${cfg.border} ${cfg.bg} ${cfg.glow}`}>
+                <div className="flex items-center gap-3">
+                  <div className={`w-10 h-10 rounded-xl ${cfg.bg} border ${cfg.border} flex items-center justify-center shrink-0`}>
+                    {cfg.icon}
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold mb-0.5">Verification Result</p>
+                    <h2 className={`text-xl font-extrabold ${cfg.color}`}>{result.classification}</h2>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className={`text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-lg border ${cfg.strengthColor}`}>
                     {result.evidence_strength} Evidence
                   </span>
+                  {result.cached && (
+                    <span className="text-xs text-teal-400 bg-teal-400/10 border border-teal-400/20 px-2.5 py-1.5 rounded-lg font-bold uppercase tracking-wide">
+                      Cached
+                    </span>
+                  )}
                 </div>
               </div>
 
-              <Dialog>
-                <DialogTrigger asChild>
-                  <motion.div 
-                    whileHover={{ scale: 1.02 }}
-                    className="relative w-full max-w-xs aspect-[9/16] rounded-[2rem] overflow-hidden border-2 border-white/10 shadow-[0_20px_60px_-15px_rgba(45,212,191,0.2)] cursor-zoom-in group"
-                  >
-                    <img
-                      id="receipt-image"
-                      src={`/api/receipt/${result.id}`}
-                      alt="Verification Receipt"
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-[#0A0A0A]/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
-                      <ZoomIn className="w-10 h-10 text-white drop-shadow-2xl" />
+              {/* ── Two-column layout ── */}
+              <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
+
+                {/* LEFT: Receipt image */}
+                <div className="flex flex-col gap-4">
+                  {/* Receipt card */}
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <motion.div whileHover={{ scale: 1.02 }}
+                        className="relative w-full aspect-[9/16] rounded-[2rem] overflow-hidden border-2 border-white/10 shadow-[0_20px_60px_-15px_rgba(45,212,191,0.2)] cursor-zoom-in group">
+                        <img id="receipt-image" src={`/api/receipt/${result.id}`} alt="Verification Receipt" className="w-full h-full object-cover" />
+                        <div className="absolute inset-0 bg-[#0A0A0A]/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-[2px]">
+                          <ZoomIn className="w-10 h-10 text-white drop-shadow-2xl" />
+                        </div>
+                        {/* Tap hint */}
+                        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <span className="bg-black/70 text-white/80 text-xs px-3 py-1.5 rounded-full backdrop-blur-md border border-white/10 font-medium">
+                            Click to expand
+                          </span>
+                        </div>
+                      </motion.div>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-7xl w-[95vw] h-[95vh] bg-[#0A0A0A]/95 backdrop-blur-xl border-white/10 flex flex-col p-2 sm:p-6 !pt-12">
+                      <DialogHeader className="sr-only"><DialogTitle>Full Receipt View</DialogTitle><DialogDescription>Click the image to zoom in or out</DialogDescription></DialogHeader>
+                      <ZoomableReceipt src={`/api/receipt/${result.id}`} />
+                    </DialogContent>
+                  </Dialog>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-3">
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                      id="share-btn" onClick={handleShare}
+                      className="flex-1 flex items-center justify-center gap-2 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all shadow-[0_0_20px_rgba(45,212,191,0.1)] hover:shadow-[0_0_25px_rgba(45,212,191,0.25)]">
+                      <Share2 className="w-4 h-4" /> Share
+                    </motion.button>
+                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                      id="verify-another-btn" onClick={resetState}
+                      className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white/80 border border-white/20 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all">
+                      <RefreshCcw className="w-4 h-4" /> New
+                    </motion.button>
+                  </div>
+                </div>
+
+                {/* RIGHT: Evidence + Details */}
+                <div className="flex flex-col gap-5">
+
+                  {/* Interpretation */}
+                  {result.interpretation && (
+                    <div className={`flex items-start gap-3 p-4 rounded-2xl border ${cfg.border} ${cfg.bg}`}>
+                      <Info className={`w-4 h-4 shrink-0 mt-0.5 ${cfg.color}`} />
+                      <p className="text-sm text-white/70 leading-relaxed">{result.interpretation}</p>
                     </div>
-                  </motion.div>
-                </DialogTrigger>
-                <DialogContent className="max-w-7xl w-[95vw] h-[95vh] bg-[#0A0A0A]/95 backdrop-blur-xl border-white/10 flex flex-col p-2 sm:p-6 !pt-12">
-                  <DialogHeader className="sr-only"><DialogTitle>Full Receipt View</DialogTitle><DialogDescription>Click the image to zoom in or out</DialogDescription></DialogHeader>
-                  <ZoomableReceipt src={`/api/receipt/${result.id}`} />
-                </DialogContent>
-              </Dialog>
+                  )}
 
-              <div className="flex gap-3 w-full max-w-xs mt-2">
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  id="share-btn"
-                  onClick={handleShare}
-                  className="flex-1 flex items-center justify-center gap-2 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 px-4 py-4 rounded-2xl text-sm font-bold transition-all shadow-[0_0_20px_rgba(45,212,191,0.15)]"
-                >
-                  <Share2 className="w-4 h-4" /> Share
-                </motion.button>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  id="verify-another-btn"
-                  onClick={resetState}
-                  className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white/90 border border-white/20 px-4 py-4 rounded-2xl text-sm font-bold transition-all"
-                >
-                  <RefreshCcw className="w-4 h-4" /> Again
-                </motion.button>
-              </div>
+                  {/* Evidence list */}
+                  {result.evidence && result.evidence.length > 0 && (
+                    <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5">
+                      <h3 className="text-xs uppercase tracking-widest font-bold text-white/40 mb-4 flex items-center gap-2">
+                        <FileSearch className="w-3.5 h-3.5" />
+                        Evidence Findings
+                        <span className="ml-auto text-white/25">{result.evidence.length} item{result.evidence.length !== 1 ? 's' : ''}</span>
+                      </h3>
+                      <ul className="flex flex-col gap-3">
+                        {result.evidence.map((item, i) => (
+                          <motion.li key={i}
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: i * 0.07 }}
+                            className="flex items-start gap-3 text-sm text-white/70 leading-relaxed">
+                            <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${cfg.color} opacity-80`} />
+                            {item}
+                          </motion.li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-              <div className="w-full max-w-xs mt-2">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <button className="w-full flex items-center justify-center gap-2 bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 border border-purple-500/30 px-4 py-3 rounded-2xl text-sm font-bold transition-all">
-                      <Code className="w-4 h-4" /> View Raw Data
-                    </button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-[#0a0a0a] border-white/10 text-white">
-                    <DialogHeader>
-                      <DialogTitle className="text-teal-400">Raw Verification Data</DialogTitle>
-                      <DialogDescription>
-                        Complete JSON response from the API.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <pre className="p-4 rounded-xl bg-white/5 border border-white/10 overflow-x-auto text-xs text-white/80 font-mono mt-4">
-                      {JSON.stringify(result, null, 2)}
-                    </pre>
-                  </DialogContent>
-                </Dialog>
-              </div>
-              <div className="w-full max-w-md mt-6 bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl p-5 shadow-xl text-sm">
-                <div className="flex items-center gap-2 text-teal-400 font-bold mb-4 uppercase tracking-wider text-xs">
-                  <Info className="w-4 h-4" /> Scan Details
-                </div>
-                
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                    <span className="text-white/50 flex items-center gap-1.5"><FileSearch className="w-3.5 h-3.5"/> File Size</span>
-                    <span className="text-white/90 font-medium truncate max-w-[200px]">{imageDetails?.size || 'Unknown'}</span>
+                  {/* Scan details */}
+                  <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-5">
+                    <h3 className="text-xs uppercase tracking-widest font-bold text-white/40 mb-4 flex items-center gap-2">
+                      <Info className="w-3.5 h-3.5" />
+                      Scan Details
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { label: 'Source', value: imageDetails?.source || 'Unknown', icon: <UploadCloud className="w-3.5 h-3.5" /> },
+                        { label: 'File Name', value: imageDetails?.name || '—', icon: <FileSearch className="w-3.5 h-3.5" /> },
+                        { label: 'File Size', value: imageDetails?.size || 'Unknown', icon: <Database className="w-3.5 h-3.5" /> },
+                        { label: 'Dimensions', value: imageDetails?.dimensions || 'Unknown', icon: <Scan className="w-3.5 h-3.5" /> },
+                        { label: 'Processing', value: `${result.processing_time_ms} ms`, icon: <Clock className="w-3.5 h-3.5" /> },
+                        { label: 'Cache', value: result.cached ? 'Hit (instant)' : 'Miss (fresh run)', icon: <Database className="w-3.5 h-3.5" /> },
+                      ].map(({ label, value, icon }) => (
+                        <div key={label} className="flex flex-col gap-1 bg-white/5 rounded-xl p-3 border border-white/5">
+                          <span className="text-[10px] text-white/35 uppercase tracking-wider font-bold flex items-center gap-1.5">{icon}{label}</span>
+                          <span className="text-xs text-white/80 font-medium truncate" title={value}>{value}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                    <span className="text-white/50 flex items-center gap-1.5"><Scan className="w-3.5 h-3.5"/> Dimensions</span>
-                    <span className="text-white/90 font-medium">{imageDetails?.dimensions || 'Unknown'}</span>
-                  </div>
-                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
-                    <span className="text-white/50 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5"/> Processing Time</span>
-                    <span className="text-white/90 font-medium">{result.processing_time_ms} ms</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-white/50 flex items-center gap-1.5"><Database className="w-3.5 h-3.5"/> Cache Status</span>
-                    {result.cached ? (
-                      <span className="text-teal-400 bg-teal-400/10 px-2 py-0.5 rounded-md font-bold text-xs uppercase border border-teal-400/20">Hit</span>
-                    ) : (
-                      <span className="text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-md font-bold text-xs uppercase border border-purple-500/20">Miss (Native Run)</span>
-                    )}
-                  </div>
+
+                  {/* Raw data */}
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <button className="flex items-center justify-center gap-2 bg-white/5 hover:bg-white/8 text-white/50 hover:text-white/70 border border-white/10 hover:border-white/20 px-4 py-3 rounded-2xl text-xs font-bold transition-all">
+                        <Code className="w-3.5 h-3.5" /> View Raw JSON
+                      </button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto bg-[#0a0a0a] border-white/10 text-white">
+                      <DialogHeader>
+                        <DialogTitle className="text-teal-400">Raw Verification Data</DialogTitle>
+                        <DialogDescription>Complete JSON response from the API.</DialogDescription>
+                      </DialogHeader>
+                      <pre className="p-4 rounded-xl bg-white/5 border border-white/10 overflow-x-auto text-xs text-white/80 font-mono mt-4">
+                        {JSON.stringify(result, null, 2)}
+                      </pre>
+                    </DialogContent>
+                  </Dialog>
                 </div>
               </div>
-
             </motion.div>
           )}
 
+          {/* ══════════════ ERROR ══════════════ */}
           {appState === 'ERROR' && (() => {
             const err = friendlyError(errorMsg || 'An unexpected error occurred.');
             return (
-            <motion.div 
-              key="error"
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="w-full flex flex-col items-center gap-5 bg-red-950/20 border border-red-500/20 backdrop-blur-md rounded-3xl p-8 max-w-sm shadow-[0_0_40px_rgba(239,68,68,0.1)]"
-            >
-              <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center border border-red-500/40 shadow-[0_0_20px_rgba(239,68,68,0.3)]">
-                <AlertCircle className="w-8 h-8 text-red-400" />
-              </div>
-              <div className="text-center space-y-2">
-                <h3 className="text-lg font-bold text-white">
-                  {err.title}
-                </h3>
-                <p className="text-sm text-red-200/80 leading-relaxed">
-                  {err.message}
-                </p>
-                {err.hint && (
-                  <p className="text-xs text-white/40 mt-2 bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">
-                    💡 {err.hint}
-                  </p>
+              <motion.div key="error" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                className="w-full max-w-md flex flex-col items-center gap-5 bg-red-950/20 border border-red-500/20 backdrop-blur-md rounded-3xl p-8 shadow-[0_0_40px_rgba(239,68,68,0.1)]">
+                <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center border border-red-500/40 shadow-[0_0_20px_rgba(239,68,68,0.3)]">
+                  <AlertCircle className="w-8 h-8 text-red-400" />
+                </div>
+                <div className="text-center space-y-2">
+                  <h3 className="text-lg font-bold text-white">{err.title}</h3>
+                  <p className="text-sm text-red-200/80 leading-relaxed">{err.message}</p>
+                  {err.hint && (
+                    <p className="text-xs text-white/40 mt-2 bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">💡 {err.hint}</p>
+                  )}
+                </div>
+                {errorMsg && errorMsg !== err.message && (
+                  <details className="w-full text-left">
+                    <summary className="text-[10px] text-white/30 cursor-pointer hover:text-white/50 flex items-center gap-1 justify-center uppercase tracking-widest font-bold">
+                      <ChevronDown className="w-3 h-3" /> Technical Details
+                    </summary>
+                    <pre className="mt-2 text-[10px] text-white/25 bg-white/5 rounded-xl p-3 overflow-x-auto border border-white/5 break-all whitespace-pre-wrap">{errorMsg}</pre>
+                  </details>
                 )}
-              </div>
-              {errorMsg && errorMsg !== err.message && (
-                <details className="w-full text-left">
-                  <summary className="text-[10px] text-white/30 cursor-pointer hover:text-white/50 flex items-center gap-1 justify-center uppercase tracking-widest font-bold">
-                    <ChevronDown className="w-3 h-3" /> Technical Details
-                  </summary>
-                  <pre className="mt-2 text-[10px] text-white/25 bg-white/5 rounded-xl p-3 overflow-x-auto border border-white/5 break-all whitespace-pre-wrap">{errorMsg}</pre>
-                </details>
-              )}
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                id="retry-btn"
-                onClick={resetState}
-                className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 px-6 py-4 rounded-2xl text-sm font-bold transition-all mt-1"
-              >
-                Try Again
-              </motion.button>
-            </motion.div>
+                <motion.button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                  id="retry-btn" onClick={resetState}
+                  className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 px-6 py-4 rounded-2xl text-sm font-bold transition-all mt-1">
+                  Try Again
+                </motion.button>
+              </motion.div>
             );
           })()}
         </AnimatePresence>
