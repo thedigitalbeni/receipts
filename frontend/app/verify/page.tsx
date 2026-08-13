@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan, FileSearch, Code, ZoomIn, ZoomOut, Info, Clock, Database } from 'lucide-react';
+import { UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan, FileSearch, Code, ZoomIn, ZoomOut, Info, Clock, Database, ChevronDown } from 'lucide-react';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 
 // ---------------------------------------------------------------------------
@@ -32,6 +32,26 @@ const LOADING_MESSAGES = [
   'Querying origin trace...',
   'Applying rules engine...',
 ];
+
+/** Map raw backend errors to user-friendly messages */
+function friendlyError(raw: string): { title: string; message: string; hint?: string } {
+  const lower = raw.toLowerCase();
+  if (lower.includes('could not fetch html') || lower.includes('no social image metadata'))
+    return { title: 'Not a Direct Image', message: 'This URL points to a webpage, not an image file.', hint: 'Right-click the image → "Copy image address" and paste that URL instead.' };
+  if (lower.includes('content type') || lower.includes('not a valid image') || lower.includes('url must point directly'))
+    return { title: 'Invalid Image URL', message: 'The URL doesn\'t point to a supported image format.', hint: 'Make sure the URL ends in .jpg, .png, or .webp.' };
+  if (lower.includes('too large') || lower.includes('exceeds'))
+    return { title: 'File Too Large', message: 'The image exceeds the 15 MB size limit.', hint: 'Try compressing the image or using a smaller version.' };
+  if (lower.includes('rate limit'))
+    return { title: 'Rate Limited', message: 'Too many requests. Please wait a moment.', hint: 'The limit is 10 verifications per minute.' };
+  if (lower.includes('blocked ip') || lower.includes('resolve'))
+    return { title: 'URL Blocked', message: 'This URL could not be safely accessed.', hint: 'Try a different image source.' };
+  if (lower.includes('timed out') || lower.includes('aborterror'))
+    return { title: 'Request Timed Out', message: 'The server took too long to respond.', hint: 'The server might be starting up — try again in a few seconds.' };
+  if (lower.includes('network') || lower.includes('fetch'))
+    return { title: 'Connection Error', message: 'Could not reach the verification server.', hint: 'Check your internet connection and try again.' };
+  return { title: 'Verification Failed', message: raw.length > 120 ? raw.slice(0, 120) + '…' : raw };
+}
 
 const STRENGTH_COLORS: Record<string, string> = {
   Strong: 'text-teal-400 border-teal-400/40 bg-teal-400/10 shadow-[0_0_15px_rgba(45,212,191,0.2)]',
@@ -607,36 +627,51 @@ export default function ReceiptsPage() {
             </motion.div>
           )}
 
-          {/* ==================== ERROR ==================== */}
-          {appState === 'ERROR' && (
+          {appState === 'ERROR' && (() => {
+            const err = friendlyError(errorMsg || 'An unexpected error occurred.');
+            return (
             <motion.div 
               key="error"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="w-full flex flex-col items-center gap-6 bg-red-950/20 border border-red-500/20 backdrop-blur-md rounded-3xl p-8 max-w-xs shadow-[0_0_40px_rgba(239,68,68,0.1)]"
+              className="w-full flex flex-col items-center gap-5 bg-red-950/20 border border-red-500/20 backdrop-blur-md rounded-3xl p-8 max-w-sm shadow-[0_0_40px_rgba(239,68,68,0.1)]"
             >
               <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center border border-red-500/40 shadow-[0_0_20px_rgba(239,68,68,0.3)]">
                 <AlertCircle className="w-8 h-8 text-red-400" />
               </div>
               <div className="text-center space-y-2">
                 <h3 className="text-lg font-bold text-white">
-                  Verification Failed
+                  {err.title}
                 </h3>
-                <p className="text-sm text-red-200/70">
-                  {errorMsg || 'An unexpected error occurred.'}
+                <p className="text-sm text-red-200/80 leading-relaxed">
+                  {err.message}
                 </p>
+                {err.hint && (
+                  <p className="text-xs text-white/40 mt-2 bg-white/5 rounded-xl px-4 py-2.5 border border-white/5">
+                    💡 {err.hint}
+                  </p>
+                )}
               </div>
+              {errorMsg && errorMsg !== err.message && (
+                <details className="w-full text-left">
+                  <summary className="text-[10px] text-white/30 cursor-pointer hover:text-white/50 flex items-center gap-1 justify-center uppercase tracking-widest font-bold">
+                    <ChevronDown className="w-3 h-3" /> Technical Details
+                  </summary>
+                  <pre className="mt-2 text-[10px] text-white/25 bg-white/5 rounded-xl p-3 overflow-x-auto border border-white/5 break-all whitespace-pre-wrap">{errorMsg}</pre>
+                </details>
+              )}
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 id="retry-btn"
                 onClick={resetState}
-                className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 px-6 py-4 rounded-2xl text-sm font-bold transition-all mt-2"
+                className="w-full bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/30 px-6 py-4 rounded-2xl text-sm font-bold transition-all mt-1"
               >
                 Try Again
               </motion.button>
             </motion.div>
-          )}
+            );
+          })()}
         </AnimatePresence>
       </div>
     </main>
