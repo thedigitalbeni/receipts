@@ -173,35 +173,48 @@ async def validate_url_content_type(url: str) -> None:
     3. If neither yields Content-Type starting with "image/",
        raise InputValidationError (→ HTTP 400).
     """
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
-        content_type = None
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
+        redirects = 0
+        while redirects <= 5:
+            content_type = None
 
-        # Step 1: Try HEAD
-        try:
-            head_resp = await client.head(url)
-            if head_resp.status_code != 405:
-                content_type = head_resp.headers.get("content-type", "")
-        except httpx.HTTPError:
-            pass
-
-        # Step 2: Fallback to GET with Range if HEAD failed or returned 405
-        if not content_type:
+            # Step 1: Try HEAD
             try:
-                get_resp = await client.get(
-                    url,
-                    headers={"Range": "bytes=0-1023"},
-                )
-                content_type = get_resp.headers.get("content-type", "")
-            except httpx.HTTPError as e:
-                raise InputValidationError(
-                    f"Could not determine content type of URL: {e}"
-                )
+                head_resp = await client.head(url)
+                if head_resp.status_code in (301, 302, 303, 307, 308) and "location" in head_resp.headers:
+                    url = validate_url_scheme_and_resolve(head_resp.headers["location"])
+                    redirects += 1
+                    continue
+                if head_resp.status_code != 405:
+                    content_type = head_resp.headers.get("content-type", "")
+            except httpx.HTTPError:
+                pass
 
-        # Step 3: Check Content-Type
-        if not content_type or not content_type.strip().lower().startswith("image/"):
-            raise InputValidationError(
-                f"URL must point directly to an image file, not a webpage. Got: {content_type}"
-            )
+            # Step 2: Fallback to GET with Range if HEAD failed or returned 405
+            if not content_type:
+                try:
+                    get_resp = await client.get(
+                        url,
+                        headers={"Range": "bytes=0-1023"},
+                    )
+                    if get_resp.status_code in (301, 302, 303, 307, 308) and "location" in get_resp.headers:
+                        url = validate_url_scheme_and_resolve(get_resp.headers["location"])
+                        redirects += 1
+                        continue
+                    content_type = get_resp.headers.get("content-type", "")
+                except httpx.HTTPError as e:
+                    raise InputValidationError(
+                        f"Could not determine content type of URL: {e}"
+                    )
+
+            # Step 3: Check Content-Type
+            if not content_type or not content_type.strip().lower().startswith("image/"):
+                raise InputValidationError(
+                    f"URL must point directly to an image file, not a webpage. Got: {content_type}"
+                )
+            return
+
+        raise InputValidationError("Too many redirects")
 
 
 # ---------------------------------------------------------------------------
@@ -215,20 +228,27 @@ async def download_image_from_url(url: str) -> bytes:
     calling this function. This function enforces the 15 MB size limit
     via streaming to avoid loading oversized files into memory.
     """
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
-            chunks = []
-            total = 0
-            async for chunk in response.aiter_bytes(chunk_size=8192):
-                total += len(chunk)
-                if total > MAX_UPLOAD_SIZE_BYTES:
-                    raise InputValidationError(
-                        f"Remote file too large: exceeds "
-                        f"{MAX_UPLOAD_SIZE_BYTES} byte limit"
-                    )
-                chunks.append(chunk)
-            return b"".join(chunks)
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
+        redirects = 0
+        while redirects <= 5:
+            async with client.stream("GET", url) as response:
+                if response.status_code in (301, 302, 303, 307, 308) and "location" in response.headers:
+                    url = validate_url_scheme_and_resolve(response.headers["location"])
+                    redirects += 1
+                    continue
+                response.raise_for_status()
+                chunks = []
+                total = 0
+                async for chunk in response.aiter_bytes(chunk_size=8192):
+                    total += len(chunk)
+                    if total > MAX_UPLOAD_SIZE_BYTES:
+                        raise InputValidationError(
+                            f"Remote file too large: exceeds "
+                            f"{MAX_UPLOAD_SIZE_BYTES} byte limit"
+                        )
+                    chunks.append(chunk)
+                return b"".join(chunks)
+        raise InputValidationError("Too many redirects")
 
 # ---------------------------------------------------------------------------
 # Social Link Extraction
@@ -241,24 +261,33 @@ async def extract_social_image_url(url: str) -> str:
     been performed on the URL.
     """
     html_content = b""
-    async with httpx.AsyncClient(timeout=HTML_FETCH_TIMEOUT_SECS, follow_redirects=True, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
+    async with httpx.AsyncClient(timeout=HTML_FETCH_TIMEOUT_SECS, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
         try:
-            async with client.stream("GET", url) as response:
-                response.raise_for_status()
-                content_type = response.headers.get("content-type", "")
-                if "text/html" not in content_type.lower():
-                    raise InputValidationError(f"Expected HTML page for social link extraction, got {content_type}")
-                
-                total = 0
-                chunks = []
-                async for chunk in response.aiter_bytes(chunk_size=8192):
-                    total += len(chunk)
-                    if total > MAX_HTML_FETCH_BYTES:
-                        raise InputValidationError(
-                            f"HTML content too large: exceeds {MAX_HTML_FETCH_BYTES} byte limit"
-                        )
-                    chunks.append(chunk)
-                html_content = b"".join(chunks)
+            redirects = 0
+            while redirects <= 5:
+                async with client.stream("GET", url) as response:
+                    if response.status_code in (301, 302, 303, 307, 308) and "location" in response.headers:
+                        url = validate_url_scheme_and_resolve(response.headers["location"])
+                        redirects += 1
+                        continue
+                    response.raise_for_status()
+                    content_type = response.headers.get("content-type", "")
+                    if "text/html" not in content_type.lower():
+                        raise InputValidationError(f"Expected HTML page for social link extraction, got {content_type}")
+                    
+                    total = 0
+                    chunks = []
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        total += len(chunk)
+                        if total > MAX_HTML_FETCH_BYTES:
+                            raise InputValidationError(
+                                f"HTML content too large: exceeds {MAX_HTML_FETCH_BYTES} byte limit"
+                            )
+                        chunks.append(chunk)
+                    html_content = b"".join(chunks)
+                    break
+            if redirects > 5:
+                raise InputValidationError("Too many redirects")
         except httpx.HTTPError as e:
             raise InputValidationError(f"Could not fetch HTML: {e}")
             

@@ -4,11 +4,9 @@ import { NextRequest } from 'next/server';
 import fs from 'fs';
 import path from 'path';
 
-// Load fonts from the public directory
+// Font paths resolved at module level, but file reads happen inside the handler
 const regularFontPath = path.join(process.cwd(), 'public', 'Roboto-Regular.ttf');
 const boldFontPath = path.join(process.cwd(), 'public', 'Roboto-Bold.ttf');
-const getInterRegular = fs.readFileSync(regularFontPath);
-const getInterBold = fs.readFileSync(boldFontPath);
 
 export async function GET(
   req: NextRequest,
@@ -45,8 +43,8 @@ export async function GET(
 
     const receipt = data[0];
 
-    const interRegularFont = getInterRegular;
-    const interBoldFont = getInterBold;
+    const interRegularFont = fs.readFileSync(regularFontPath);
+    const interBoldFont = fs.readFileSync(boldFontPath);
 
     const getStrengthColor = (strength: string) => {
       switch (strength?.toLowerCase()) {
@@ -74,7 +72,7 @@ export async function GET(
             height: '1920px',
             backgroundColor: '#0A0A0A',
             color: '#FFFFFF',
-            fontFamily: 'Inter',
+            fontFamily: 'Roboto',
             padding: '80px',
             boxSizing: 'border-box',
           }}
@@ -245,20 +243,23 @@ export async function GET(
       {
         width: 1080,
         height: 1920,
-        fonts: [
+      fonts: [
           {
-            name: 'Inter',
+            name: 'Roboto',
             data: interRegularFont,
-            style: 'normal',
-            weight: 400,
+            style: 'normal' as const,
+            weight: 400 as const,
           },
           {
-            name: 'Inter',
+            name: 'Roboto',
             data: interBoldFont,
-            style: 'normal',
-            weight: 700,
+            style: 'normal' as const,
+            weight: 700 as const,
           },
         ],
+        headers: {
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
       }
     );
   } catch (error: unknown) {

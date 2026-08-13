@@ -198,7 +198,15 @@ async def verify(
     # --- SHA-256 Cache Check (Fix #6) ---
     sha256_hash = hashlib.sha256(image_bytes).hexdigest()
 
-    cached_row = get_receipt_by_sha256(sha256_hash)
+    try:
+        cached_row = get_receipt_by_sha256(sha256_hash)
+    except Exception as e:
+        logger.exception("Internal server error during cache check")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error during verification"}
+        )
+
     if cached_row:
         # Cache hit — return stored result immediately without re-running
         # the pipeline. This avoids burning SerpApi quota and C2PA cycles
@@ -226,88 +234,95 @@ async def verify(
         )
 
     # --- Full Pipeline (cache miss) ---
-    start_time = time.time()
+    try:
+        start_time = time.time()
 
-    # Step 1: Local Forensics (M3)
-    phash_val = compute_phash(image_bytes)
-    exif_data = extract_exif(image_bytes)
+        # Step 1: Local Forensics (M3)
+        phash_val = compute_phash(image_bytes)
+        exif_data = extract_exif(image_bytes)
 
-    # Step 2: Provenance (M4)
-    # Fix #1: Use detect_ai_generation() and detect_camera_signature()
-    # from provenance.py to populate C2PAEvidence fields directly.
-    c2pa_manifest = extract_c2pa_manifest(image_bytes)
-    is_ai = detect_ai_generation(c2pa_manifest) if c2pa_manifest else False
-    is_camera = detect_camera_signature(c2pa_manifest) if c2pa_manifest else False
+        # Step 2: Provenance (M4)
+        # Fix #1: Use detect_ai_generation() and detect_camera_signature()
+        # from provenance.py to populate C2PAEvidence fields directly.
+        c2pa_manifest = extract_c2pa_manifest(image_bytes)
+        is_ai = detect_ai_generation(c2pa_manifest) if c2pa_manifest else False
+        is_camera = detect_camera_signature(c2pa_manifest) if c2pa_manifest else False
 
-    # Step 3: Origin Trace (M5)
-    # Get a public URL for SerpApi to fetch.
-    if input_type == InputType.url and image_url:
-        public_url = image_url
-    else:
-        # File upload: upload to Supabase Storage to get a public URL.
-        public_url = upload_image_to_storage(image_bytes)
+        # Step 3: Origin Trace (M5)
+        # Get a public URL for SerpApi to fetch.
+        if input_type == InputType.url and image_url:
+            public_url = image_url
+        else:
+            # File upload: upload to Supabase Storage to get a public URL.
+            public_url = upload_image_to_storage(image_bytes)
 
-    # Fix #3: query_origin_trace() takes exactly 1 argument (image_url).
-    # phash_val is NOT used by origin_trace — SerpApi does its own visual
-    # matching. phash_val is used only for local duplicate detection (M3)
-    # and is stored in the DB row for future pHash-based deduplication.
-    origin_trace_raw = query_origin_trace(public_url)
-    origin_trace_evidence = to_frozen_contract(origin_trace_raw)
+        # Fix #3: query_origin_trace() takes exactly 1 argument (image_url).
+        # phash_val is NOT used by origin_trace — SerpApi does its own visual
+        # matching. phash_val is used only for local duplicate detection (M3)
+        # and is stored in the DB row for future pHash-based deduplication.
+        origin_trace_raw = query_origin_trace(public_url)
+        origin_trace_evidence = to_frozen_contract(origin_trace_raw)
 
-    # Step 4: Evidence Aggregation & Rules Engine (M6)
-    # Fix #2: Use correct frozen-contract field names from schemas.py.
-    # Fix #5: Use M3's editing_software_detected from the EXIF dict
-    # directly — extract_exif() already checks 14 editors via
-    # _detect_editing_software(). Do not re-implement.
-    aggregated_evidence = AggregatedEvidence(
-        c2pa=C2PAEvidence(
-            has_manifest=bool(c2pa_manifest),
-            ai_generated=is_ai,
-            camera_signature=is_camera,
-            raw_manifest=c2pa_manifest,
-        ),
-        metadata=MetadataEvidence(
-            has_exif=bool(exif_data),
-            raw_exif=exif_data if exif_data else None,
-            editing_software_detected=exif_data.get("editing_software_detected", False)
-                if exif_data else False,
-        ),
-        origin_trace=origin_trace_evidence,
-        duplicate_detection=DuplicateDetectionEvidence(
+        # Step 4: Evidence Aggregation & Rules Engine (M6)
+        # Fix #2: Use correct frozen-contract field names from schemas.py.
+        # Fix #5: Use M3's editing_software_detected from the EXIF dict
+        # directly — extract_exif() already checks 14 editors via
+        # _detect_editing_software(). Do not re-implement.
+        aggregated_evidence = AggregatedEvidence(
+            c2pa=C2PAEvidence(
+                has_manifest=bool(c2pa_manifest),
+                ai_generated=is_ai,
+                camera_signature=is_camera,
+                raw_manifest=c2pa_manifest,
+            ),
+            metadata=MetadataEvidence(
+                has_exif=bool(exif_data),
+                raw_exif=exif_data if exif_data else None,
+                editing_software_detected=exif_data.get("editing_software_detected", False)
+                    if exif_data else False,
+            ),
+            origin_trace=origin_trace_evidence,
+            duplicate_detection=DuplicateDetectionEvidence(
+                phash=phash_val,
+                matches_found=False,
+            ),
+        )
+
+        evaluation_result = evaluate_evidence(aggregated_evidence)
+
+        processing_time_ms = int((time.time() - start_time) * 1000)
+
+        # Step 5: Database Persistence (M7)
+        # Single INSERT with status="complete". No early "processing" row,
+        # so no UPDATE is needed — Section 5 RLS (INSERT + SELECT only) holds.
+        row_id = insert_receipt(
+            sha256=sha256_hash,
             phash=phash_val,
-            matches_found=False,
-        ),
-    )
+            input_type=input_type.value,
+            source_url=image_url if input_type == InputType.url else None,
+            original_image_url=public_url,
+            classification=evaluation_result.classification,
+            evidence_strength=evaluation_result.evidence_strength.value,
+            evidence=evaluation_result.evidence,
+            interpretation=evaluation_result.interpretation,
+            status="complete",
+            error_message=None,
+            processing_time_ms=processing_time_ms,
+        )
 
-    evaluation_result = evaluate_evidence(aggregated_evidence)
-
-    processing_time_ms = int((time.time() - start_time) * 1000)
-
-    # Step 5: Database Persistence (M7)
-    # Single INSERT with status="complete". No early "processing" row,
-    # so no UPDATE is needed — Section 5 RLS (INSERT + SELECT only) holds.
-    row_id = insert_receipt(
-        sha256=sha256_hash,
-        phash=phash_val,
-        input_type=input_type.value,
-        source_url=image_url if input_type == InputType.url else None,
-        original_image_url=public_url,
-        classification=evaluation_result.classification,
-        evidence_strength=evaluation_result.evidence_strength.value,
-        evidence=evaluation_result.evidence,
-        interpretation=evaluation_result.interpretation,
-        status="complete",
-        error_message=None,
-        processing_time_ms=processing_time_ms,
-    )
-
-    return VerifyResponse(
-        id=row_id,
-        classification=evaluation_result.classification,
-        evidence_strength=evaluation_result.evidence_strength,
-        evidence=evaluation_result.evidence,
-        interpretation=evaluation_result.interpretation,
-        processing_time_ms=processing_time_ms,
-        receipt_image_url=f"/api/receipt/{row_id}",
-        cached=False,
-    )
+        return VerifyResponse(
+            id=row_id,
+            classification=evaluation_result.classification,
+            evidence_strength=evaluation_result.evidence_strength,
+            evidence=evaluation_result.evidence,
+            interpretation=evaluation_result.interpretation,
+            processing_time_ms=processing_time_ms,
+            receipt_image_url=f"/api/receipt/{row_id}",
+            cached=False,
+        )
+    except Exception as e:
+        logger.exception("Internal server error during verification pipeline")
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error during verification"}
+        )

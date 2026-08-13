@@ -44,17 +44,21 @@ function ZoomableReceipt({ src }: { src: string }) {
   const [zoomed, setZoomed] = useState(false);
   return (
     <div 
-      className={`relative w-full h-full rounded-xl bg-black/50 border border-white/5 ${zoomed ? 'overflow-auto flex items-start justify-center' : 'flex items-center justify-center overflow-hidden'}`}
+      className={`relative w-full h-full rounded-xl bg-black/50 border border-white/5 flex items-center justify-center ${zoomed ? 'overflow-auto' : 'overflow-hidden'}`}
       onClick={() => setZoomed(!zoomed)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setZoomed(!zoomed); }}
     >
-      <div className="absolute top-4 right-4 z-50 pointer-events-none bg-black/50 text-white/70 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md flex items-center gap-2 border border-white/10">
+      <div className="absolute bottom-4 right-4 z-40 pointer-events-none bg-black/60 text-white/70 px-3 py-1.5 rounded-full text-xs font-bold backdrop-blur-md flex items-center gap-2 border border-white/10">
         {zoomed ? <ZoomOut className="w-4 h-4"/> : <ZoomIn className="w-4 h-4"/>}
         {zoomed ? 'Click to zoom out' : 'Click to zoom in'}
       </div>
       <img
         src={src}
         alt="Full Receipt"
-        className={`transition-all duration-300 ${zoomed ? 'w-full h-auto max-w-none cursor-zoom-out' : 'max-w-full max-h-full object-contain cursor-zoom-in'}`}
+        style={{ transform: zoomed ? 'scale(2)' : 'scale(1)', transformOrigin: 'center center' }}
+        className={`transition-transform duration-300 max-w-full max-h-full object-contain ${zoomed ? 'cursor-zoom-out' : 'cursor-zoom-in'}`}
       />
     </div>
   );
@@ -143,6 +147,7 @@ export default function ReceiptsPage() {
       setAppState('ERROR');
       return;
     }
+    if (thumbnail) URL.revokeObjectURL(thumbnail);
     const objectUrl = URL.createObjectURL(file);
     setThumbnail(objectUrl);
     
@@ -238,6 +243,7 @@ export default function ReceiptsPage() {
 
   // ---- reset ----
   const resetState = () => {
+    if (thumbnail) URL.revokeObjectURL(thumbnail);
     setAppState('DROPZONE');
     setErrorMsg(null);
     setThumbnail(null);
@@ -286,7 +292,7 @@ export default function ReceiptsPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 relative overflow-hidden bg-[#0A0A0A] text-white">
       {/* Ambient Cyber Glows */}
-      <div className="pointer-events-none fixed inset-0">
+      <div className="pointer-events-none fixed inset-0" aria-hidden="true">
         <motion.div 
           animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }}
           transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
@@ -362,6 +368,7 @@ export default function ReceiptsPage() {
                   className="hidden"
                   accept="image/jpeg,image/png,image/webp"
                   onChange={handleFileChange}
+                  aria-label="Upload image file"
                 />
                 
                 <UploadCloud className={`w-12 h-12 mb-5 transition-colors ${dragActive ? 'text-teal-400' : 'text-white/40'}`} />
@@ -387,6 +394,7 @@ export default function ReceiptsPage() {
                   onChange={(e) => setImageUrl(e.target.value)}
                   onKeyDown={handleUrlKeyDown}
                   placeholder="Paste image URL"
+                  aria-label="Image URL"
                   className="flex-1 bg-white/5 border border-white/10 rounded-2xl px-5 py-4 text-sm text-white placeholder-white/30 focus:outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-400 focus:bg-white/10 transition-all shadow-inner"
                 />
                 <button
@@ -521,7 +529,7 @@ export default function ReceiptsPage() {
                   </motion.div>
                 </DialogTrigger>
                 <DialogContent className="max-w-7xl w-[95vw] h-[95vh] bg-[#0A0A0A]/95 backdrop-blur-xl border-white/10 flex flex-col p-2 sm:p-6 !pt-12">
-                  <DialogHeader className="hidden"><DialogTitle>Receipt</DialogTitle><DialogDescription>Receipt Modal</DialogDescription></DialogHeader>
+                  <DialogHeader className="sr-only"><DialogTitle>Full Receipt View</DialogTitle><DialogDescription>Click the image to zoom in or out</DialogDescription></DialogHeader>
                   <ZoomableReceipt src={`/api/receipt/${result.id}`} />
                 </DialogContent>
               </Dialog>
@@ -575,7 +583,7 @@ export default function ReceiptsPage() {
                 <div className="space-y-3">
                   <div className="flex justify-between items-center border-b border-white/5 pb-2">
                     <span className="text-white/50 flex items-center gap-1.5"><FileSearch className="w-3.5 h-3.5"/> File Size</span>
-                    <span className="text-white/90 font-medium">{imageDetails?.size || 'Unknown'}</span>
+                    <span className="text-white/90 font-medium truncate max-w-[200px]">{imageDetails?.size || 'Unknown'}</span>
                   </div>
                   <div className="flex justify-between items-center border-b border-white/5 pb-2">
                     <span className="text-white/50 flex items-center gap-1.5"><Scan className="w-3.5 h-3.5"/> Dimensions</span>

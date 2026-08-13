@@ -57,7 +57,8 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
         if result.earliest_wayback_timestamp:
             try:
                 # wayback timestamp format: '2019-03-15T12:00:00+00:00' (ISO 8601)
-                dt = datetime.fromisoformat(result.earliest_wayback_timestamp)
+                ts = result.earliest_wayback_timestamp.replace('Z', '+00:00')
+                dt = datetime.fromisoformat(ts)
                 if dt.tzinfo is None:
                     # In case it's parsed as naive, assume UTC
                     dt = dt.replace(tzinfo=timezone.utc)

@@ -3,6 +3,14 @@
 :root {
   --background: #0a0a0a;
   --foreground: #ffffff;
+  --accent: #1a1a2e;
+  --accent-foreground: #ffffff;
+  --muted: #1a1a1a;
+  --muted-foreground: #a1a1aa;
+  --ring: #2dd4bf;
+  --ring-offset-background: #0a0a0a;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.1);
 }
 
 @theme {
