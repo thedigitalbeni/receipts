@@ -546,8 +546,15 @@ export default function Home() {
             <ShieldCheck className="w-4 h-4 text-teal-500/60" />
             <span>Receipts — Image Provenance Verification</span>
           </div>
-          <div className="flex items-center gap-6 text-xs text-white/30">
+          <div className="flex items-center gap-4 sm:gap-6 text-xs text-white/30">
             <span>Created by <span className="text-white/50 font-semibold">Beneyas Tadu</span></span>
+            <a
+              href="mailto:beneyas.work@gmail.com"
+              className="flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/50 hover:text-white/70 px-3 py-1.5 rounded-lg transition-all font-medium"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+              Contact Us
+            </a>
             <Link href="/verify" className="hover:text-white/60 transition-colors">Verify →</Link>
           </div>
         </div>

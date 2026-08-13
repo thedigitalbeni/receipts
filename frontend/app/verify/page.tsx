@@ -596,6 +596,34 @@ export default function ReceiptsPage() {
                 </div>
               </div>
 
+              {/* ── Scanned image preview ── */}
+              {thumbnail && (
+                <div className="flex items-center gap-4 p-3 sm:p-4 rounded-2xl bg-white/[0.03] border border-white/8">
+                  <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden shrink-0 border border-white/10">
+                    <img src={thumbnail} alt="Scanned image" className="w-full h-full object-cover" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-transparent to-black/20" />
+                  </div>
+                  <div className="flex flex-col gap-0.5 min-w-0">
+                    <span className="text-[10px] text-white/35 uppercase tracking-widest font-bold">Scanned Image</span>
+                    <span className="text-sm text-white/70 font-medium truncate">
+                      {imageDetails?.name ?? (imageUrl ? (() => { try { return new URL(imageUrl).hostname; } catch { return 'URL Image'; } })() : 'Uploaded Image')}
+                    </span>
+                    <div className="flex items-center gap-3 mt-0.5">
+                      {imageDetails?.dimensions && (
+                        <span className="text-[11px] text-white/35">{imageDetails.dimensions}</span>
+                      )}
+                      {imageDetails?.size && imageDetails.size !== 'Unknown' && (
+                        <span className="text-[11px] text-white/35">{imageDetails.size}</span>
+                      )}
+                      <span className="text-[11px] text-white/25">{imageDetails?.source ?? 'Remote'}</span>
+                    </div>
+                  </div>
+                  <div className="ml-auto shrink-0">
+                    <CheckCircle className="w-5 h-5 text-teal-400/60" />
+                  </div>
+                </div>
+              )}
+
               {/* ── Two-column layout ── */}
               <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] xl:grid-cols-[340px_1fr] gap-4 sm:gap-6">
 
