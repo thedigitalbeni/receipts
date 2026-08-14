@@ -134,19 +134,18 @@ async def rate_limit_handler(
 @app.get("/health")
 async def health() -> dict:
     """Health check endpoint."""
+    return {"status": "ok"}
 
 
 @app.get("/debug-env")
 async def debug_env() -> dict:
-    """Temporary: shows CORS config so we can verify env vars loaded correctly."""
+    """Shows active CORS config to verify env vars loaded correctly."""
     return {
         "cors_origins_env_raw": os.environ.get("CORS_ORIGINS", "(not set)"),
         "cors_origins_active": _cors_origins,
         "supabase_url_set": bool(os.environ.get("SUPABASE_URL")),
         "serpapi_key_set": bool(os.environ.get("SERPAPI_API_KEY")),
     }
-
-    return {"status": "ok"}
 
 
 @app.post("/verify", response_model=VerifyResponse)
