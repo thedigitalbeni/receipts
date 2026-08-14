@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   UploadCloud, CheckCircle, AlertCircle, Share2, RefreshCcw, Scan,
   FileSearch, Code, ZoomIn, ZoomOut, Info, Clock, Database, ChevronDown,
   ArrowLeft, ShieldCheck, Brain, Globe, Cpu, CheckCircle2,
   HelpCircle, ExternalLink, Plus, Minus, Maximize2,
+  Download, Link2, Copy, Check, X, Send, MessageCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -33,31 +34,46 @@ interface VerifyResult {
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '');
 
 const LOADING_MESSAGES = [
+  'Initializing forensic pipeline…',
   'Extracting metadata…',
   'Checking C2PA signatures…',
   'Running Error Level Analysis…',
   'Querying origin trace…',
+  'Analyzing Wayback Machine data…',
   'Applying rules engine…',
 ];
 
+const PHASE_DURATION = 2500;
+
 /** Map raw backend errors to user-friendly messages */
 function friendlyError(raw: string): { title: string; message: string; hint?: string } {
+  if (!raw) return { title: 'Unexpected Error', message: 'Something went wrong.', hint: 'Please try again.' };
   const lower = raw.toLowerCase();
   if (lower.includes('could not fetch html') || lower.includes('no social image metadata'))
     return { title: 'Not a Direct Image', message: 'This URL points to a webpage, not an image file.', hint: 'Right-click the image → "Copy image address" and paste that URL instead.' };
   if (lower.includes('content type') || lower.includes('not a valid image') || lower.includes('url must point directly'))
-    return { title: 'Invalid Image URL', message: "The URL doesn't point to a supported image format.", hint: 'Make sure the URL ends in .jpg, .png, or .webp.' };
+    return { title: 'Invalid Image URL', message: "The URL doesn't point to a supported image format.", hint: 'Make sure the URL ends in .jpg, .png, or .webp — not a webpage URL.' };
   if (lower.includes('too large') || lower.includes('exceeds'))
     return { title: 'File Too Large', message: 'The image exceeds the 15 MB size limit.', hint: 'Try compressing the image or using a smaller version.' };
   if (lower.includes('rate limit'))
     return { title: 'Rate Limited', message: 'Too many requests. Please wait a moment.', hint: 'The limit is 10 verifications per minute.' };
-  if (lower.includes('blocked ip') || lower.includes('resolve'))
-    return { title: 'URL Blocked', message: 'This URL could not be safely accessed.', hint: 'Try a different image source.' };
+  if (lower.includes('blocked ip') || lower.includes('resolve') || lower.includes('dns'))
+    return { title: 'URL Blocked', message: 'This URL could not be safely accessed.', hint: 'The URL may point to an internal network. Try a public image URL.' };
   if (lower.includes('timed out') || lower.includes('aborterror'))
-    return { title: 'Request Timed Out', message: 'The server took too long to respond.', hint: 'The server might be starting up — try again in a few seconds.' };
-  if (lower.includes('network') || lower.includes('fetch'))
-    return { title: 'Connection Error', message: 'Could not reach the verification server.', hint: 'Check your internet connection and try again.' };
-  return { title: 'Verification Failed', message: raw.length > 120 ? raw.slice(0, 120) + '…' : raw };
+    return { title: 'Request Timed Out', message: 'The analysis took too long to complete.', hint: 'The server may be starting up from sleep — wait 10 seconds and try again.' };
+  if (lower.includes('internal server error') || lower.includes('500'))
+    return { title: 'Server Error', message: 'Something went wrong on our end.', hint: 'This is usually temporary. Please try again in a moment.' };
+  if (lower.includes('422') || lower.includes('unprocessable'))
+    return { title: 'Invalid Input', message: 'The server couldn\'t process this image.', hint: 'Make sure the URL points directly to an image file.' };
+  if (lower.includes('cors') || lower.includes('origin'))
+    return { title: 'Connection Blocked', message: 'Cross-origin request was blocked.', hint: 'This is usually temporary — please try again.' };
+  if (lower.includes('ssl') || lower.includes('certificate'))
+    return { title: 'Secure Connection Failed', message: 'Could not establish a secure connection to the image source.', hint: 'Try a different image URL from a trusted source.' };
+  if (lower.includes('network') || lower.includes('fetch') || lower.includes('failed to fetch'))
+    return { title: 'Connection Error', message: 'Could not reach the verification server.', hint: 'The server may be waking up — wait 10 seconds and try again.' };
+  if (lower.includes('server error'))
+    return { title: 'Server Error', message: raw, hint: 'Please try again in a moment.' };
+  return { title: 'Verification Failed', message: raw.length > 120 ? raw.slice(0, 120) + '…' : raw, hint: 'Please try again or use a different image.' };
 }
 
 // Classification → visual config
@@ -197,14 +213,33 @@ export default function ReceiptsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Share menu state
+  const [shareOpen, setShareOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const shareRef = useRef<HTMLDivElement>(null);
+  const [retrying, setRetrying] = useState(false);
+
+  // Close share menu on outside click
+  useEffect(() => {
+    if (!shareOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (shareRef.current && !shareRef.current.contains(e.target as Node)) setShareOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [shareOpen]);
+
   // loading text rotation
   useEffect(() => {
     if (appState !== 'ANALYZING') return;
     const id = setInterval(() => {
       setLoadingIdx((i) => (i + 1) % LOADING_MESSAGES.length);
-    }, 2000);
+    }, PHASE_DURATION);
     return () => clearInterval(id);
   }, [appState]);
+
+  // Phase progress for the scanner
+  const scanProgress = useMemo(() => (loadingIdx + 1) / LOADING_MESSAGES.length, [loadingIdx]);
 
   // drag handlers
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -259,14 +294,30 @@ export default function ReceiptsPage() {
     await sendToApi(null, imageUrl);
   };
 
+  const doFetch = async (file: File | null, url?: string, signal?: AbortSignal): Promise<Response> => {
+    const formData = new FormData();
+    if (file) { formData.append('input_type', 'file'); formData.append('file', file); }
+    else if (url) { formData.append('input_type', 'url'); formData.append('image_url', url); }
+    return fetch(`${API_URL}/verify`, { method: 'POST', body: formData, signal });
+  };
+
   const sendToApi = async (file: File | null, url?: string) => {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 60000);
+    const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes
     try {
-      const formData = new FormData();
-      if (file) { formData.append('input_type', 'file'); formData.append('file', file); }
-      else if (url) { formData.append('input_type', 'url'); formData.append('image_url', url); }
-      const res = await fetch(`${API_URL}/verify`, { method: 'POST', body: formData, signal: controller.signal });
+      let res: Response;
+      try {
+        res = await doFetch(file, url, controller.signal);
+      } catch (firstErr: unknown) {
+        // Auto-retry once on network/timeout errors (cold start)
+        const isRetryable = firstErr instanceof Error &&
+          (firstErr.name === 'AbortError' || firstErr.message.toLowerCase().includes('fetch') || firstErr.message.toLowerCase().includes('network'));
+        if (!isRetryable) throw firstErr;
+        setRetrying(true);
+        await new Promise(r => setTimeout(r, 3000));
+        setRetrying(false);
+        res = await doFetch(file, url, controller.signal);
+      }
       clearTimeout(timeoutId);
       if (!res.ok) { const errBody = await res.json().catch(() => null); throw new Error(errBody?.detail || `Server error (${res.status})`); }
       const data: VerifyResult = await res.json();
@@ -276,6 +327,7 @@ export default function ReceiptsPage() {
       setResult(data); setAppState('RESULT');
     } catch (err: unknown) {
       clearTimeout(timeoutId);
+      setRetrying(false);
       let msg = 'Network error';
       if (err instanceof Error) msg = err.name === 'AbortError' ? 'Verification timed out. The server might be warming up, please try again.' : err.message;
       setErrorMsg(msg); setAppState('ERROR');
@@ -285,24 +337,56 @@ export default function ReceiptsPage() {
   const resetState = () => {
     if (thumbnail) URL.revokeObjectURL(thumbnail);
     setAppState('DROPZONE'); setErrorMsg(null); setThumbnail(null);
-    setImageUrl(''); setResult(null); setImageDetails(null);
+    setImageUrl(''); setResult(null); setImageDetails(null); setShareOpen(false); setCopied(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleShare = async () => {
-    if (!result) return;
-    const receiptUrl = `/api/receipt/${result.id}`;
+  const getReceiptFullUrl = () => {
+    if (!result) return '';
+    return `${window.location.origin}/api/receipt/${result.id}`;
+  };
+
+  const handleCopyLink = async () => {
     try {
-      const imgRes = await fetch(receiptUrl);
+      await navigator.clipboard.writeText(getReceiptFullUrl());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard not available */ }
+  };
+
+  const handleDownload = async () => {
+    if (!result) return;
+    const a = document.createElement('a');
+    a.href = `/api/receipt/${result.id}`; a.download = `receipt-${result.id}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setShareOpen(false);
+  };
+
+  const handleShareSocial = (platform: 'x' | 'telegram' | 'whatsapp') => {
+    const url = getReceiptFullUrl();
+    const text = `Image verified with Receipts — forensic analysis complete.`;
+    const encodedUrl = encodeURIComponent(url);
+    const encodedText = encodeURIComponent(text);
+    const links: Record<string, string> = {
+      x: `https://twitter.com/intent/tweet?text=${encodedText}&url=${encodedUrl}`,
+      telegram: `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`,
+      whatsapp: `https://wa.me/?text=${encodedText}%20${encodedUrl}`,
+    };
+    window.open(links[platform], '_blank', 'noopener,noreferrer');
+    setShareOpen(false);
+  };
+
+  const handleNativeShare = async () => {
+    if (!result) return;
+    try {
+      const imgRes = await fetch(`/api/receipt/${result.id}`);
       const blob = await imgRes.blob();
       const file = new File([blob], `receipt-${result.id}.png`, { type: 'image/png' });
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ title: 'Receipts — Verification Result', files: [file] }); return;
+        await navigator.share({ title: 'Receipts — Verification Result', files: [file] });
       }
     } catch { /* fall through */ }
-    const a = document.createElement('a');
-    a.href = receiptUrl; a.download = `receipt-${result.id}.png`;
-    document.body.appendChild(a); a.click(); a.remove();
+    setShareOpen(false);
   };
 
   const handleUrlKeyDown = (e: React.KeyboardEvent) => { if (e.key === 'Enter') onUrlSubmit(); };
@@ -441,99 +525,175 @@ export default function ReceiptsPage() {
               transition={{ duration: 0.5 }}
               className="w-full max-w-md flex flex-col items-center gap-10"
             >
-              {/* ── Cinematic Scanner ── */}
-              <div className="relative w-64 h-64 sm:w-72 sm:h-72">
+              {/* ── Premium Forensic Scanner ── */}
+              <div className="relative w-72 h-72 sm:w-80 sm:h-80">
 
-                {/* Outer glow ring */}
+                {/* Rotating outer ring — slow spin */}
                 <motion.div
-                  animate={{ opacity: [0.3, 0.7, 0.3], scale: [1, 1.04, 1] }}
-                  transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
-                  className="absolute inset-0 rounded-3xl border border-teal-400/30 shadow-[0_0_40px_rgba(45,212,191,0.25)]"
+                  animate={{ rotate: 360 }}
+                  transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+                  className="absolute -inset-4 rounded-[2rem] pointer-events-none"
+                  style={{ border: '1px dashed rgba(45,212,191,0.12)' }}
+                />
+                {/* Counter-rotating ring */}
+                <motion.div
+                  animate={{ rotate: -360 }}
+                  transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+                  className="absolute -inset-2 rounded-[1.6rem] pointer-events-none"
+                  style={{ border: '1px solid rgba(168,85,247,0.08)' }}
+                />
+
+                {/* Pulsing outer glow */}
+                <motion.div
+                  animate={{ opacity: [0.2, 0.5, 0.2], scale: [1, 1.03, 1] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                  className="absolute inset-0 rounded-3xl shadow-[0_0_50px_rgba(45,212,191,0.2),0_0_100px_rgba(168,85,247,0.08)] border border-teal-400/20"
                 />
 
                 {/* Scanner box */}
-                <div className="absolute inset-0 rounded-3xl overflow-hidden bg-[#050e0e] border border-teal-500/20">
+                <div className="absolute inset-0 rounded-3xl overflow-hidden bg-[#040a0a] border border-teal-500/25">
 
-                  {/* Thumbnail */}
+                  {/* Thumbnail — fades in as scan progresses */}
                   {thumbnail && (
-                    <img src={thumbnail} alt="Analyzing" className="absolute inset-0 w-full h-full object-cover opacity-15 grayscale" />
+                    <motion.img
+                      src={thumbnail} alt="Analyzing" draggable={false}
+                      animate={{ opacity: 0.08 + scanProgress * 0.32 }}
+                      transition={{ duration: 0.8 }}
+                      className="absolute inset-0 w-full h-full object-cover grayscale"
+                    />
                   )}
 
-                  {/* Cyber grid */}
-                  <div className="absolute inset-0 bg-[linear-gradient(rgba(45,212,191,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(45,212,191,0.04)_1px,transparent_1px)] bg-[size:24px_24px]" />
+                  {/* Cyber grid overlay */}
+                  <div className="absolute inset-0 bg-[linear-gradient(rgba(45,212,191,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(45,212,191,0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
 
-                  {/* Horizontal scanlines (subtle) */}
-                  <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(0,0,0,0.15)_2px,rgba(0,0,0,0.15)_4px)] pointer-events-none" />
+                  {/* CRT scanlines */}
+                  <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(0,0,0,0.12)_2px,rgba(0,0,0,0.12)_4px)] pointer-events-none" />
 
-                  {/* Scan beam — clean back-and-forth */}
+                  {/* Crosshair lines */}
+                  <div className="absolute top-1/2 left-[10%] right-[10%] h-[1px] bg-teal-400/10 z-10" />
+                  <div className="absolute left-1/2 top-[10%] bottom-[10%] w-[1px] bg-teal-400/10 z-10" />
+                  {/* Center dot */}
+                  <motion.div
+                    animate={{ scale: [1, 1.5, 1], opacity: [0.4, 0.8, 0.4] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-teal-400/60 z-10"
+                  />
+
+                  {/* Horizontal scan beam (teal) */}
                   <motion.div
                     animate={{ top: ['0%', '100%'] }}
-                    transition={{ duration: 1.8, repeat: Infinity, repeatType: 'reverse', ease: 'linear' }}
-                    className="absolute left-0 right-0 h-0 z-10"
-                    style={{ pointerEvents: 'none' }}
+                    transition={{ duration: 2.2, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+                    className="absolute left-0 right-0 h-0 z-10" style={{ pointerEvents: 'none' }}
                   >
-                    {/* Leading glow trail above beam */}
-                    <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-b from-transparent to-teal-400/35" />
-                    {/* The bright scan line itself */}
-                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-teal-400 shadow-[0_0_12px_4px_rgba(45,212,191,0.8),0_0_30px_8px_rgba(45,212,191,0.4)]" />
-                    {/* Reflection shimmer above */}
-                    <div className="absolute bottom-[2px] left-[10%] right-[10%] h-[1px] bg-white/40" />
+                    <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-b from-transparent via-teal-400/5 to-teal-400/25" />
+                    <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-teal-400 shadow-[0_0_15px_4px_rgba(45,212,191,0.7),0_0_40px_10px_rgba(45,212,191,0.3)]" />
+                    <div className="absolute bottom-[2px] left-[8%] right-[8%] h-[1px] bg-white/30" />
                   </motion.div>
 
-                  {/* Pulsing radar circles from center */}
-                  {[0, 0.6, 1.2].map((delay, i) => (
+                  {/* Vertical scan beam (purple) */}
+                  <motion.div
+                    animate={{ left: ['0%', '100%'] }}
+                    transition={{ duration: 2.8, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut', delay: 0.5 }}
+                    className="absolute top-0 bottom-0 w-0 z-10" style={{ pointerEvents: 'none' }}
+                  >
+                    <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-purple-500/20 to-transparent" />
+                    <div className="absolute right-0 top-0 bottom-0 w-[2px] bg-purple-400/80 shadow-[0_0_12px_3px_rgba(168,85,247,0.5),0_0_30px_6px_rgba(168,85,247,0.2)]" />
+                  </motion.div>
+
+                  {/* Expanding pulse rings */}
+                  {[0, 0.8, 1.6].map((delay, i) => (
                     <motion.div key={i}
-                      animate={{ scale: [0.3, 1.4], opacity: [0.6, 0] }}
-                      transition={{ duration: 2, repeat: Infinity, delay, ease: 'easeOut' }}
-                      className="absolute inset-0 m-auto w-16 h-16 rounded-full border border-teal-400/50"
+                      animate={{ scale: [0.2, 1.6], opacity: [0.5, 0] }}
+                      transition={{ duration: 2.5, repeat: Infinity, delay, ease: 'easeOut' }}
+                      className="absolute inset-0 m-auto w-12 h-12 rounded-full border border-teal-400/30"
                     />
                   ))}
 
-                  {/* Data readout overlays */}
-                  <div className="absolute top-3 left-3 flex flex-col gap-1 font-mono text-[9px] text-teal-400/60 z-20">
-                    {['SHA-256', 'C2PA', 'EXIF'].map((label, i) => (
-                      <motion.div key={label} animate={{ opacity: [0.4, 1, 0.4] }}
-                        transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.4 }}
-                        className="flex items-center gap-1">
-                        <div className="w-1 h-1 rounded-full bg-teal-400" />
+                  {/* Floating hex data particles */}
+                  {['A3', 'F7', '0x', 'C2', 'FF', '9B', 'D4', 'E1'].map((hex, i) => (
+                    <motion.span
+                      key={hex}
+                      animate={{
+                        y: [0, -120 - i * 15],
+                        x: [0, (i % 2 === 0 ? 1 : -1) * (8 + i * 3)],
+                        opacity: [0, 0.7, 0],
+                      }}
+                      transition={{ duration: 3 + i * 0.3, repeat: Infinity, delay: i * 0.4, ease: 'easeOut' }}
+                      className="absolute font-mono text-[8px] text-teal-400/40 z-10 pointer-events-none"
+                      style={{ left: `${15 + i * 10}%`, top: '75%' }}
+                    >
+                      {hex}
+                    </motion.span>
+                  ))}
+
+                  {/* Data readout — left */}
+                  <div className="absolute top-3 left-3 flex flex-col gap-1.5 font-mono text-[9px] text-teal-400/50 z-20">
+                    {['SHA-256', 'C2PA', 'EXIF', 'ELA'].map((label, i) => (
+                      <motion.div key={label}
+                        animate={{ opacity: loadingIdx >= i ? [0.5, 1, 0.5] : 0.2 }}
+                        transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
+                        className="flex items-center gap-1.5">
+                        <motion.div
+                          animate={{ backgroundColor: loadingIdx >= i ? 'rgba(45,212,191,1)' : 'rgba(45,212,191,0.3)' }}
+                          className="w-1.5 h-1.5 rounded-full"
+                        />
                         {label}
-                      </motion.div>
-                    ))}
-                  </div>
-                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1 font-mono text-[9px] text-teal-400/50 z-20">
-                    {['ELA', 'QNT', 'ORIG'].map((label, i) => (
-                      <motion.div key={label} animate={{ opacity: [0.3, 0.9, 0.3] }}
-                        transition={{ duration: 2, repeat: Infinity, delay: i * 0.5 + 0.2 }}
-                        className="flex items-center gap-1">
-                        {label}
-                        <div className="w-1 h-1 rounded-full bg-teal-400" />
+                        {loadingIdx === i && <motion.span animate={{ opacity: [1, 0] }} transition={{ duration: 0.5, repeat: Infinity }}>_</motion.span>}
                       </motion.div>
                     ))}
                   </div>
 
-                  {/* Bottom status row */}
+                  {/* Data readout — right */}
+                  <div className="absolute top-3 right-3 flex flex-col items-end gap-1.5 font-mono text-[9px] text-purple-400/40 z-20">
+                    {['QNT', 'SERPAPI', 'WAYBACK'].map((label, i) => (
+                      <motion.div key={label}
+                        animate={{ opacity: loadingIdx >= i + 4 ? [0.5, 1, 0.5] : 0.2 }}
+                        transition={{ duration: 2, repeat: Infinity, delay: i * 0.4 }}
+                        className="flex items-center gap-1.5">
+                        {label}
+                        <motion.div
+                          animate={{ backgroundColor: loadingIdx >= i + 4 ? 'rgba(168,85,247,1)' : 'rgba(168,85,247,0.3)' }}
+                          className="w-1.5 h-1.5 rounded-full"
+                        />
+                      </motion.div>
+                    ))}
+                  </div>
+
+                  {/* Bottom status bar */}
                   <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between font-mono text-[9px] text-teal-400/50 z-20">
-                    <motion.span animate={{ opacity: [0.4, 1, 0.4] }} transition={{ duration: 1.2, repeat: Infinity }}>SCANNING…</motion.span>
-                    <motion.span animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 0.8, repeat: Infinity }}>●</motion.span>
+                    <div className="flex items-center gap-1.5">
+                      <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ duration: 0.6, repeat: Infinity }}
+                        className="w-1.5 h-1.5 rounded-full bg-teal-400" />
+                      <span>SCANNING</span>
+                    </div>
+                    <span className="text-white/20">{Math.round(scanProgress * 100)}%</span>
                   </div>
 
-                  {/* Corner brackets */}
-                  <div className="absolute top-2 left-2 w-5 h-5 border-t-2 border-l-2 border-teal-400 rounded-tl-sm z-20" />
-                  <div className="absolute top-2 right-2 w-5 h-5 border-t-2 border-r-2 border-teal-400 rounded-tr-sm z-20" />
-                  <div className="absolute bottom-2 left-2 w-5 h-5 border-b-2 border-l-2 border-teal-400 rounded-bl-sm z-20" />
-                  <div className="absolute bottom-2 right-2 w-5 h-5 border-b-2 border-r-2 border-teal-400 rounded-br-sm z-20" />
+                  {/* Rotating corner brackets */}
+                  {[
+                    { pos: 'top-2 left-2', border: 'border-t-2 border-l-2', rotate: [0, 2, 0] },
+                    { pos: 'top-2 right-2', border: 'border-t-2 border-r-2', rotate: [0, -2, 0] },
+                    { pos: 'bottom-2 left-2', border: 'border-b-2 border-l-2', rotate: [0, -2, 0] },
+                    { pos: 'bottom-2 right-2', border: 'border-b-2 border-r-2', rotate: [0, 2, 0] },
+                  ].map(({ pos, border, rotate }, i) => (
+                    <motion.div key={i}
+                      animate={{ rotate }}
+                      transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+                      className={`absolute ${pos} w-5 h-5 ${border} border-teal-400 z-20`}
+                    />
+                  ))}
                 </div>
-
-                {/* Rotating outer arc */}
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
-                  className="absolute -inset-3 rounded-[2rem] border border-dashed border-teal-500/15 pointer-events-none"
-                />
               </div>
 
-              {/* Loading text */}
+              {/* Loading text + progress */}
               <div className="text-center space-y-4 w-full">
+                {/* Retry message */}
+                {retrying && (
+                  <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    className="text-xs text-amber-400/80 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-xl">
+                    Server waking up, retrying…
+                  </motion.p>
+                )}
                 <div className="min-h-[36px] flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     <motion.div key={loadingIdx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3 }}
@@ -543,23 +703,30 @@ export default function ReceiptsPage() {
                     </motion.div>
                   </AnimatePresence>
                 </div>
+                {/* Segmented progress bar */}
+                <div className="flex items-center justify-center gap-1 w-64 mx-auto">
+                  {LOADING_MESSAGES.map((_, i) => (
+                    <motion.div key={i}
+                      animate={{ opacity: i <= loadingIdx ? 1 : 0.15 }}
+                      className={`h-1 flex-1 rounded-full transition-all duration-500 ${
+                        i < loadingIdx ? 'bg-teal-400' : i === loadingIdx ? 'bg-gradient-to-r from-teal-400 to-purple-400' : 'bg-white/10'
+                      }`}
+                    />
+                  ))}
+                </div>
                 {/* Progress dots */}
                 <div className="flex items-center justify-center gap-2">
                   {LOADING_MESSAGES.map((_, i) => (
                     <motion.div key={i}
-                      animate={{ scale: i === loadingIdx ? 1.4 : 1, opacity: i === loadingIdx ? 1 : 0.25 }}
+                      animate={{ scale: i === loadingIdx ? 1.5 : 1, opacity: i === loadingIdx ? 1 : i < loadingIdx ? 0.6 : 0.15 }}
                       transition={{ duration: 0.3 }}
-                      className={`w-1.5 h-1.5 rounded-full ${i === loadingIdx ? 'bg-teal-400' : 'bg-white/30'}`}
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        i < loadingIdx ? 'bg-teal-400' : i === loadingIdx ? 'bg-teal-400' : 'bg-white/20'
+                      }`}
                     />
                   ))}
                 </div>
-                {/* Progress bar */}
-                <div className="w-56 h-[3px] bg-white/8 rounded-full overflow-hidden mx-auto">
-                  <motion.div className="h-full bg-gradient-to-r from-teal-400 via-purple-400 to-teal-400 rounded-full"
-                    animate={{ x: ['-100%', '200%'] }} transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
-                    style={{ width: '50%' }} />
-                </div>
-                <p className="text-xs text-white/25 font-mono tracking-wider">FORENSIC PIPELINE ACTIVE</p>
+                <p className="text-xs text-white/20 font-mono tracking-wider">FORENSIC PIPELINE ACTIVE — STAGE {loadingIdx + 1}/{LOADING_MESSAGES.length}</p>
               </div>
             </motion.div>
           )}
@@ -654,11 +821,63 @@ export default function ReceiptsPage() {
 
                   {/* Action buttons */}
                   <div className="flex gap-3">
-                    <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
-                      id="share-btn" onClick={handleShare}
-                      className="flex-1 flex items-center justify-center gap-2 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all shadow-[0_0_20px_rgba(45,212,191,0.1)] hover:shadow-[0_0_25px_rgba(45,212,191,0.25)]">
-                      <Share2 className="w-4 h-4" /> Share
-                    </motion.button>
+                    {/* Share dropdown */}
+                    <div className="relative flex-1" ref={shareRef}>
+                      <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
+                        id="share-btn" onClick={() => setShareOpen(!shareOpen)}
+                        className="w-full flex items-center justify-center gap-2 bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/30 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all shadow-[0_0_20px_rgba(45,212,191,0.1)] hover:shadow-[0_0_25px_rgba(45,212,191,0.25)]">
+                        <Share2 className="w-4 h-4" /> Share
+                        <ChevronDown className={`w-3 h-3 transition-transform ${shareOpen ? 'rotate-180' : ''}`} />
+                      </motion.button>
+                      <AnimatePresence>
+                        {shareOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                            transition={{ duration: 0.15 }}
+                            className="absolute bottom-full left-0 right-0 mb-2 bg-[#111]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-2xl z-50 flex flex-col gap-0.5"
+                          >
+                            <button onClick={handleCopyLink}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/8 transition-colors text-left w-full">
+                              {copied ? <Check className="w-4 h-4 text-teal-400 shrink-0" /> : <Copy className="w-4 h-4 text-white/50 shrink-0" />}
+                              <span className="text-sm text-white/80 font-medium">{copied ? 'Copied!' : 'Copy Link'}</span>
+                            </button>
+                            <button onClick={handleDownload}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/8 transition-colors text-left w-full">
+                              <Download className="w-4 h-4 text-white/50 shrink-0" />
+                              <span className="text-sm text-white/80 font-medium">Download PNG</span>
+                            </button>
+                            <div className="h-px bg-white/8 mx-2 my-1" />
+                            <button onClick={() => handleShareSocial('x')}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/8 transition-colors text-left w-full">
+                              <X className="w-4 h-4 text-white/50 shrink-0" />
+                              <span className="text-sm text-white/80 font-medium">Share on X</span>
+                            </button>
+                            <button onClick={() => handleShareSocial('telegram')}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/8 transition-colors text-left w-full">
+                              <Send className="w-4 h-4 text-white/50 shrink-0" />
+                              <span className="text-sm text-white/80 font-medium">Share on Telegram</span>
+                            </button>
+                            <button onClick={() => handleShareSocial('whatsapp')}
+                              className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/8 transition-colors text-left w-full">
+                              <MessageCircle className="w-4 h-4 text-white/50 shrink-0" />
+                              <span className="text-sm text-white/80 font-medium">Share on WhatsApp</span>
+                            </button>
+                            {typeof navigator !== 'undefined' && 'share' in navigator && (
+                              <>
+                                <div className="h-px bg-white/8 mx-2 my-1" />
+                                <button onClick={handleNativeShare}
+                                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/8 transition-colors text-left w-full">
+                                  <Share2 className="w-4 h-4 text-teal-400 shrink-0" />
+                                  <span className="text-sm text-teal-300 font-medium">More Options…</span>
+                                </button>
+                              </>
+                            )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                     <motion.button whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }}
                       id="verify-another-btn" onClick={resetState}
                       className="flex-1 flex items-center justify-center gap-2 bg-white/10 hover:bg-white/15 text-white/80 border border-white/20 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all">
