@@ -77,11 +77,17 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 
-# CORS — strict origins from env var; wildcard (*) is explicitly rejected
-# per Section 5. In production, CORS_ORIGINS must contain the exact Vercel
-# domain. Falls back to localhost:3000 for local development.
-_cors_origins_raw = os.environ.get("CORS_ORIGINS", "http://localhost:3000")
-_cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+# CORS — reads from CORS_ORIGINS env var (comma-separated).
+# Always includes localhost:3000 for local dev.
+# In production set CORS_ORIGINS to your exact Vercel domain.
+_cors_origins_raw = os.environ.get("CORS_ORIGINS", "")
+_cors_origins_from_env = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+_cors_origins_defaults = ["http://localhost:3000", "http://localhost:3001"]
+_cors_origins = list(dict.fromkeys(_cors_origins_defaults + _cors_origins_from_env))
+
+logger.info("CORS_ORIGINS env raw: %r", _cors_origins_raw)
+logger.info("CORS allowed origins: %s", _cors_origins)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -128,6 +134,18 @@ async def rate_limit_handler(
 @app.get("/health")
 async def health() -> dict:
     """Health check endpoint."""
+
+
+@app.get("/debug-env")
+async def debug_env() -> dict:
+    """Temporary: shows CORS config so we can verify env vars loaded correctly."""
+    return {
+        "cors_origins_env_raw": os.environ.get("CORS_ORIGINS", "(not set)"),
+        "cors_origins_active": _cors_origins,
+        "supabase_url_set": bool(os.environ.get("SUPABASE_URL")),
+        "serpapi_key_set": bool(os.environ.get("SERPAPI_API_KEY")),
+    }
+
     return {"status": "ok"}
 
 
