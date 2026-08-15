@@ -248,16 +248,51 @@ export default function ReceiptsPage() {
     else if (e.type === 'dragleave') setDragActive(false);
   }, []);
 
+// Helper: sanitize pasted URLs on mobile and desktop
+function sanitizeImageUrl(raw: string): string {
+  if (!raw) return '';
+  let clean = raw.trim()
+    .replace(/^["'“‘]+|["'”’]+$/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .trim();
+
+  try {
+    const parsed = new URL(clean);
+    // Unwrap Google Images preview links copied on mobile
+    if (parsed.hostname.includes('google.') && (parsed.pathname.includes('/imgres') || parsed.pathname.includes('/url'))) {
+      const realUrl = parsed.searchParams.get('imgurl') || parsed.searchParams.get('url');
+      if (realUrl && realUrl.startsWith('http')) {
+        clean = decodeURIComponent(realUrl);
+      }
+    }
+  } catch {
+    // If not a valid URL yet, return cleaned string for server validation
+  }
+  return clean;
+}
+
+// Helper: check if file is an acceptable image on mobile/desktop
+function isValidImageFile(file: File): boolean {
+  const validMimes = [
+    'image/jpeg', 'image/png', 'image/webp',
+    'image/heic', 'image/heif', 'image/pjpeg', 'image/x-png', 'image/jpg'
+  ];
+  if (file.type && validMimes.includes(file.type.toLowerCase())) return true;
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  return ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(ext || '');
+}
+
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault(); e.stopPropagation();
     setDragActive(false);
     const uriList = e.dataTransfer.getData('text/uri-list');
     const plainText = e.dataTransfer.getData('text/plain');
-    const url = uriList || plainText;
-    if (url && url.startsWith('http')) {
-      setImageUrl(url); setThumbnail(url);
+    const rawUrl = uriList || plainText;
+    if (rawUrl && rawUrl.startsWith('http')) {
+      const cleanUrl = sanitizeImageUrl(rawUrl);
+      setImageUrl(cleanUrl); setThumbnail(cleanUrl);
       setAppState('ANALYZING'); setLoadingIdx(0);
-      await sendToApi(null, url); return;
+      await sendToApi(null, cleanUrl); return;
     }
     if (e.dataTransfer.files?.[0]) await processFile(e.dataTransfer.files[0]);
   }, []);
@@ -267,9 +302,16 @@ export default function ReceiptsPage() {
   };
 
   const processFile = async (file: File) => {
-    const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) { setErrorMsg('Please upload a valid image (JPG, PNG, or WebP).'); setAppState('ERROR'); return; }
-    if (file.size > 15 * 1024 * 1024) { setErrorMsg('File size must be under 15 MB.'); setAppState('ERROR'); return; }
+    if (!isValidImageFile(file)) {
+      setErrorMsg('Please upload a valid image (JPG, PNG, WebP, or HEIC).');
+      setAppState('ERROR');
+      return;
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      setErrorMsg('File size must be under 15 MB.');
+      setAppState('ERROR');
+      return;
+    }
     if (thumbnail) URL.revokeObjectURL(thumbnail);
     const objectUrl = URL.createObjectURL(file);
     setThumbnail(objectUrl);
@@ -281,24 +323,41 @@ export default function ReceiptsPage() {
   };
 
   const onUrlSubmit = async () => {
-    if (!imageUrl.trim()) return;
-    setThumbnail(imageUrl);
+    const cleanUrl = sanitizeImageUrl(imageUrl);
+    if (!cleanUrl) return;
+    setImageUrl(cleanUrl);
+    setThumbnail(cleanUrl);
     const img = new window.Image();
     img.onload = () => {
       let name = 'Image from URL';
-      try { name = new URL(imageUrl).pathname.split('/').pop() || name; } catch {}
+      try { name = new URL(cleanUrl).pathname.split('/').pop() || name; } catch {}
       setImageDetails({ name, size: 'Unknown', dimensions: `${img.width} × ${img.height} px`, source: 'URL Input' });
     };
-    img.src = imageUrl;
+    img.src = cleanUrl;
     setAppState('ANALYZING'); setLoadingIdx(0);
-    await sendToApi(null, imageUrl);
+    await sendToApi(null, cleanUrl);
   };
 
   const doFetch = async (file: File | null, url?: string, signal?: AbortSignal): Promise<Response> => {
     const formData = new FormData();
     if (file) { formData.append('input_type', 'file'); formData.append('file', file); }
     else if (url) { formData.append('input_type', 'url'); formData.append('image_url', url); }
-    return fetch(`${API_URL}/verify`, { method: 'POST', body: formData, signal });
+
+    // For files > 4MB that exceed Vercel serverless 4.5MB limit, use direct backend
+    if (file && file.size > 4 * 1024 * 1024) {
+      return fetch(`${API_URL}/verify`, { method: 'POST', body: formData, signal });
+    }
+
+    try {
+      const res = await fetch('/api/verify', { method: 'POST', body: formData, signal });
+      if (res.status === 413) {
+        // Fallback to direct backend if Vercel body limit is exceeded
+        return fetch(`${API_URL}/verify`, { method: 'POST', body: formData, signal });
+      }
+      return res;
+    } catch {
+      return fetch(`${API_URL}/verify`, { method: 'POST', body: formData, signal });
+    }
   };
 
   const sendToApi = async (file: File | null, url?: string) => {
