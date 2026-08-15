@@ -224,20 +224,27 @@ function useReveal(threshold = 0.15) {
   return { ref, inView };
 }
 
-// ─── ANIMATED COUNTER ─────────────────────────────────────────────────────────
+// ─── ANIMATED COUNTER (LIGHTWEIGHT RAF) ─────────────────────────────────────────
 function Counter({ to, suffix = '' }: { to: number; suffix?: string }) {
-  const { ref, inView } = useReveal(0.5);
-  const motionVal = useMotionValue(0);
-  const spring = useSpring(motionVal, { stiffness: 80, damping: 20 });
+  const { ref, inView } = useReveal(0.2);
   const [display, setDisplay] = useState(0);
 
   useEffect(() => {
-    if (inView) motionVal.set(to);
-  }, [inView, motionVal, to]);
+    if (!inView) return;
+    const duration = 1000;
+    const startTime = performance.now();
 
-  useEffect(() => {
-    return spring.on('change', (v) => setDisplay(Math.round(v)));
-  }, [spring]);
+    const frame = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Fast cubic ease-out
+      const ease = 1 - Math.pow(1 - progress, 3);
+      setDisplay(Math.round(ease * to));
+      if (progress < 1) requestAnimationFrame(frame);
+    };
+
+    requestAnimationFrame(frame);
+  }, [inView, to]);
 
   return <span ref={ref}>{display}{suffix}</span>;
 }
@@ -247,47 +254,43 @@ function FAQItem({ q, a, idx }: { q: string; a: string; idx: number }) {
   const [open, setOpen] = useState(false);
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30 }}
+      initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true }}
-      transition={{ duration: 0.5, delay: idx * 0.06, ease: EASE }}
-      className={`border rounded-2xl overflow-hidden transition-all duration-300 ${open ? 'border-teal-500/30 bg-teal-500/5' : 'border-white/10 bg-white/[0.03] hover:border-white/20'}`}
+      viewport={{ once: true, margin: '-20px' }}
+      transition={{ duration: 0.4, delay: idx * 0.05, ease: EASE }}
+      className={`border rounded-2xl overflow-hidden transition-all duration-200 ${open ? 'border-teal-500/30 bg-teal-500/5' : 'border-white/10 bg-white/[0.03] hover:border-white/20'}`}
     >
       <button
         className="w-full text-left px-6 py-5 flex items-start justify-between gap-4"
         onClick={() => setOpen(!open)}
       >
         <span className="font-semibold text-white/90 text-sm leading-relaxed">{q}</span>
-        <ChevronDown className={`w-5 h-5 text-white/40 shrink-0 mt-0.5 transition-transform duration-300 ${open ? 'rotate-180 text-teal-400' : ''}`} />
+        <ChevronDown className={`w-5 h-5 text-white/40 shrink-0 mt-0.5 transition-transform duration-200 ${open ? 'rotate-180 text-teal-400' : ''}`} />
       </button>
-      <div className={`px-6 transition-all duration-300 overflow-hidden ${open ? 'max-h-64 pb-5' : 'max-h-0'}`}>
+      <div className={`px-6 transition-all duration-200 overflow-hidden ${open ? 'max-h-64 pb-5' : 'max-h-0'}`}>
         <p className="text-sm text-white/60 leading-relaxed">{a}</p>
       </div>
     </motion.div>
   );
 }
 
-// ─── FLOATING PARTICLES ───────────────────────────────────────────────────────
-const PARTICLE_LABELS = ['SHA-256', 'C2PA', 'EXIF', 'ELA', '0xFF', 'QNT', 'ORIG', '0xA3', 'C2', 'META'];
+// ─── FLOATING PARTICLES (GPU OPTIMIZED) ─────────────────────────────────────────
+const PARTICLE_LABELS = ['SHA-256', 'C2PA', 'EXIF', 'ELA', '0xFF', 'QNT', 'ORIG', '0xA3'];
 
 function HeroParticles() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
       {PARTICLE_LABELS.map((label, i) => {
-        const left = 5 + (i * 9.3) % 90;
-        const startY = 20 + (i * 13.7) % 60;
-        const duration = 8 + (i * 1.3) % 8;
-        const delay = i * 0.7;
+        const left = 8 + (i * 11.5) % 84;
+        const top = 20 + (i * 14) % 60;
         return (
-          <motion.span
+          <span
             key={label}
-            className="absolute font-mono text-[10px] text-teal-400/20 select-none"
-            style={{ left: `${left}%`, top: `${startY}%` }}
-            animate={{ y: [-20, -80], opacity: [0, 0.5, 0] }}
-            transition={{ duration, delay, repeat: Infinity, ease: 'easeInOut' }}
+            className="absolute font-mono text-[10px] text-teal-400/20 select-none animate-pulse"
+            style={{ left: `${left}%`, top: `${top}%`, animationDelay: `${i * 0.4}s` }}
           >
             {label}
-          </motion.span>
+          </span>
         );
       })}
     </div>
@@ -299,23 +302,11 @@ export default function Home() {
   return (
     <main className="min-h-screen flex flex-col items-center bg-[#0A0A0A] text-white overflow-x-hidden">
 
-      {/* ── Animated ambient background glows ── */}
-      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
-        <motion.div
-          animate={{ scale: [1, 1.15, 1], opacity: [0.06, 0.12, 0.06] }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-[-10%] left-[5%] w-[700px] h-[700px] rounded-full bg-teal-500 blur-[140px]"
-        />
-        <motion.div
-          animate={{ scale: [1, 1.2, 1], opacity: [0.05, 0.1, 0.05] }}
-          transition={{ duration: 13, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-          className="absolute top-[40%] right-[-5%] w-[500px] h-[500px] rounded-full bg-purple-600 blur-[120px]"
-        />
-        <motion.div
-          animate={{ scale: [1, 1.1, 1], opacity: [0.03, 0.08, 0.03] }}
-          transition={{ duration: 9, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-          className="absolute bottom-[10%] left-[20%] w-[400px] h-[400px] rounded-full bg-sky-600 blur-[100px]"
-        />
+      {/* ── Ambient background glows (Optimized hardware-accelerated CSS) ── */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden transform-gpu" aria-hidden="true">
+        <div className="absolute top-[-10%] left-[5%] w-[500px] h-[500px] rounded-full bg-teal-500/10 blur-[80px] will-change-transform" />
+        <div className="absolute top-[40%] right-[-5%] w-[450px] h-[450px] rounded-full bg-purple-600/10 blur-[75px] will-change-transform" />
+        <div className="absolute bottom-[10%] left-[20%] w-[350px] h-[350px] rounded-full bg-sky-600/5 blur-[60px] will-change-transform" />
       </div>
 
       {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ HERO ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}

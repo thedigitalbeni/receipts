@@ -458,12 +458,10 @@ function isValidImageFile(file: File): boolean {
   return (
     <main className="min-h-screen flex flex-col bg-[#0A0A0A] text-white relative overflow-x-hidden">
 
-      {/* Ambient glows */}
-      <div className="pointer-events-none fixed inset-0 z-0" aria-hidden="true">
-        <motion.div animate={{ scale: [1, 1.1, 1], opacity: [0.3, 0.5, 0.3] }} transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-          className="absolute top-[-20%] left-[10%] w-[600px] h-[600px] rounded-full bg-teal-500/10 blur-[120px]" />
-        <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.2, 0.4, 0.2] }} transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-          className="absolute bottom-[-10%] right-[5%] w-[500px] h-[500px] rounded-full bg-purple-600/10 blur-[100px]" />
+      {/* Ambient glows (Hardware-accelerated static CSS) */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden transform-gpu" aria-hidden="true">
+        <div className="absolute top-[-20%] left-[10%] w-[500px] h-[500px] rounded-full bg-teal-500/10 blur-[80px] will-change-transform" />
+        <div className="absolute bottom-[-10%] right-[5%] w-[450px] h-[450px] rounded-full bg-purple-600/10 blur-[75px] will-change-transform" />
       </div>
 
       {/* ── Nav Header ── */}
