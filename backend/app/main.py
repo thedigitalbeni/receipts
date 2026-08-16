@@ -303,6 +303,15 @@ async def verify(
                 raw_exif=exif_data if exif_data else None,
                 editing_software_detected=exif_data.get("editing_software_detected", False)
                     if exif_data else False,
+                editing_software_name=exif_data.get("editing_software_name")
+                    if exif_data else None,
+                camera_metadata_detected=exif_data.get("camera_metadata_detected", False)
+                    if exif_data else False,
+                camera_make=exif_data.get("camera_make") if exif_data else None,
+                camera_model=exif_data.get("camera_model") if exif_data else None,
+                camera_lens=exif_data.get("camera_lens") if exif_data else None,
+                date_taken=exif_data.get("date_taken") if exif_data else None,
+                gps_present=bool(exif_data.get("GPSInfo")) if exif_data else False,
                 ela_suspicious=ela_result.get("is_suspicious", False),
                 quantization_software=quant_software,
             ),

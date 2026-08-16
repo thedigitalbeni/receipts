@@ -23,7 +23,7 @@ import io
 import ipaddress
 import re
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import httpx
 from PIL import Image
@@ -58,6 +58,34 @@ class InputValidationError(Exception):
         self.message = message
         self.status_code = status_code
         super().__init__(message)
+
+
+# ---------------------------------------------------------------------------
+# Magic Byte Image Sniffing
+# ---------------------------------------------------------------------------
+
+def _is_image_bytes(chunk: bytes) -> bool:
+    """Check initial magic bytes for known image formats."""
+    if len(chunk) < 4:
+        return False
+    # JPEG: starts with \xFF\xD8\xFF
+    if chunk.startswith(b"\xff\xd8\xff"):
+        return True
+    # PNG: starts with \x89PNG\r\n\x1a\n
+    if chunk.startswith(b"\x89PNG\r\n\x1a\n"):
+        return True
+    # WebP: RIFF....WEBP
+    if chunk.startswith(b"RIFF") and len(chunk) >= 12 and chunk[8:12] == b"WEBP":
+        return True
+    # GIF: GIF87a or GIF89a
+    if chunk.startswith(b"GIF87a") or chunk.startswith(b"GIF89a"):
+        return True
+    # HEIC / HEIF / AVIF: ftypheic, ftypmif1, ftypmsf1, ftypheix, ftypavif
+    if len(chunk) >= 12 and chunk[4:8] == b"ftyp":
+        brand = chunk[8:12]
+        if brand in (b"heic", b"heix", b"hevc", b"heim", b"heis", b"mif1", b"msf1", b"avif"):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -160,65 +188,76 @@ def validate_url_scheme_and_resolve(url: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# URL Content-Type Validation (HEAD → fallback GET with Range)
+# URL Content-Type & Magic Byte Validation
 # ---------------------------------------------------------------------------
 
 async def validate_url_content_type(url: str) -> None:
     """Validate that a URL points directly to an image, not a webpage.
 
-    Strategy (per Section 5 Input Validation URL Edge Case):
-    1. Issue HTTP HEAD request to check Content-Type.
-    2. If HEAD returns 405 or Content-Type is missing/malformed,
-       fall back to GET with Range: bytes=0-1023.
-    3. If neither yields Content-Type starting with "image/",
-       raise InputValidationError (→ HTTP 400).
+    Strategy:
+    1. Issue HTTP HEAD request. If 200 and Content-Type starts with 'image/', pass immediately.
+    2. If HEAD returns 403, 400, 404, 405, redirects, or non-image content-type (common on CDNs),
+       fall back to streaming the first chunk (up to 4096 bytes) via GET.
+    3. Verify Content-Type header OR image magic bytes on the first chunk.
     """
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
+    async with httpx.AsyncClient(
+        timeout=30.0,
+        follow_redirects=False,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    ) as client:
         redirects = 0
+        current_url = url
         while redirects <= 5:
-            content_type = None
-
-            # Step 1: Try HEAD
+            # Step 1: Try HEAD probe first
             try:
-                head_resp = await client.head(url)
+                head_resp = await client.head(current_url)
                 if head_resp.status_code in (301, 302, 303, 307, 308) and "location" in head_resp.headers:
-                    url = validate_url_scheme_and_resolve(head_resp.headers["location"])
+                    next_url = urljoin(current_url, head_resp.headers["location"])
+                    current_url = validate_url_scheme_and_resolve(next_url)
                     redirects += 1
                     continue
-                if head_resp.status_code != 405:
-                    content_type = head_resp.headers.get("content-type", "")
+
+                if head_resp.status_code == 200:
+                    ct = head_resp.headers.get("content-type", "").strip().lower()
+                    if ct.startswith("image/"):
+                        return
             except httpx.HTTPError:
                 pass
 
-            # Step 2: Fallback to GET with Range if HEAD failed or returned 405
-            if not content_type:
-                try:
-                    get_resp = await client.get(
-                        url,
-                        headers={"Range": "bytes=0-1023"},
-                    )
-                    if get_resp.status_code in (301, 302, 303, 307, 308) and "location" in get_resp.headers:
-                        url = validate_url_scheme_and_resolve(get_resp.headers["location"])
+            # Step 2: Fallback to streaming initial bytes via GET
+            try:
+                async with client.stream("GET", current_url) as stream_resp:
+                    if stream_resp.status_code in (301, 302, 303, 307, 308) and "location" in stream_resp.headers:
+                        next_url = urljoin(current_url, stream_resp.headers["location"])
+                        current_url = validate_url_scheme_and_resolve(next_url)
                         redirects += 1
                         continue
-                    content_type = get_resp.headers.get("content-type", "")
-                except httpx.HTTPError as e:
-                    raise InputValidationError(
-                        f"Could not determine content type of URL: {e}"
-                    )
 
-            # Step 3: Check Content-Type
-            if not content_type or not content_type.strip().lower().startswith("image/"):
-                raise InputValidationError(
-                    f"URL must point directly to an image file, not a webpage. Got: {content_type}"
-                )
-            return
+                    stream_resp.raise_for_status()
+                    ct = stream_resp.headers.get("content-type", "").strip().lower()
+                    if ct.startswith("image/"):
+                        return
+
+                    # Read first chunk to check magic bytes
+                    first_chunk = b""
+                    async for chunk in stream_resp.aiter_bytes(chunk_size=4096):
+                        first_chunk = chunk
+                        break
+
+                    if _is_image_bytes(first_chunk):
+                        return
+
+                    raise InputValidationError(
+                        f"URL must point directly to an image file, not a webpage. Got: {ct or 'non-image'}"
+                    )
+            except httpx.HTTPError as e:
+                raise InputValidationError(f"Could not connect to image URL: {e}")
 
         raise InputValidationError("Too many redirects")
 
 
 # ---------------------------------------------------------------------------
-# URL Image Download (with SSRF check already applied)
+# URL Image Download (with SSRF check and urljoin redirects)
 # ---------------------------------------------------------------------------
 
 async def download_image_from_url(url: str) -> bytes:
@@ -228,12 +267,18 @@ async def download_image_from_url(url: str) -> bytes:
     calling this function. This function enforces the 15 MB size limit
     via streaming to avoid loading oversized files into memory.
     """
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
+    async with httpx.AsyncClient(
+        timeout=30.0,
+        follow_redirects=False,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    ) as client:
         redirects = 0
+        current_url = url
         while redirects <= 5:
-            async with client.stream("GET", url) as response:
+            async with client.stream("GET", current_url) as response:
                 if response.status_code in (301, 302, 303, 307, 308) and "location" in response.headers:
-                    url = validate_url_scheme_and_resolve(response.headers["location"])
+                    next_url = urljoin(current_url, response.headers["location"])
+                    current_url = validate_url_scheme_and_resolve(next_url)
                     redirects += 1
                     continue
                 response.raise_for_status()
@@ -250,6 +295,7 @@ async def download_image_from_url(url: str) -> bytes:
                 return b"".join(chunks)
         raise InputValidationError("Too many redirects")
 
+
 # ---------------------------------------------------------------------------
 # Social Link Extraction
 # ---------------------------------------------------------------------------
@@ -261,13 +307,19 @@ async def extract_social_image_url(url: str) -> str:
     been performed on the URL.
     """
     html_content = b""
-    async with httpx.AsyncClient(timeout=HTML_FETCH_TIMEOUT_SECS, follow_redirects=False, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}) as client:
+    async with httpx.AsyncClient(
+        timeout=HTML_FETCH_TIMEOUT_SECS,
+        follow_redirects=False,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    ) as client:
         try:
             redirects = 0
+            current_url = url
             while redirects <= 5:
-                async with client.stream("GET", url) as response:
+                async with client.stream("GET", current_url) as response:
                     if response.status_code in (301, 302, 303, 307, 308) and "location" in response.headers:
-                        url = validate_url_scheme_and_resolve(response.headers["location"])
+                        next_url = urljoin(current_url, response.headers["location"])
+                        current_url = validate_url_scheme_and_resolve(next_url)
                         redirects += 1
                         continue
                     response.raise_for_status()
@@ -299,7 +351,7 @@ async def extract_social_image_url(url: str) -> str:
         html_text, re.IGNORECASE
     )
     if og_match:
-        return og_match.group(1).replace("&amp;", "&")
+        return urljoin(current_url, og_match.group(1).replace("&amp;", "&"))
         
     # Match <meta content="..." property="og:image">
     og_match_rev = re.search(
@@ -307,6 +359,7 @@ async def extract_social_image_url(url: str) -> str:
         html_text, re.IGNORECASE
     )
     if og_match_rev:
-        return og_match_rev.group(1).replace("&amp;", "&")
+        return urljoin(current_url, og_match_rev.group(1).replace("&amp;", "&"))
         
     raise InputValidationError("No social image metadata found in HTML.")
+

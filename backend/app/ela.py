@@ -115,10 +115,13 @@ def compute_ela(image_bytes: bytes, quality: int = 95) -> dict[str, Any]:
     suspicious_count = sum(1 for e in errors if e > threshold)
     suspicious_ratio = suspicious_count / n
 
-    # Decision: suspicious if >15% of pixels show anomalous error levels
-    # AND the max error is significant (>30, to avoid flagging minor
-    # re-compression artifacts)
-    is_suspicious = suspicious_ratio > 0.15 and max_error > 30
+    # Decision: suspicious if >5% of pixels show anomalous error levels
+    # with significant peak error and variance (localized manipulation),
+    # or >12% with high peak error.
+    is_suspicious = bool(
+        (suspicious_ratio > 0.05 and max_error > 25.0 and std_error > 3.0)
+        or (suspicious_ratio > 0.12 and max_error > 20.0)
+    )
 
     return {
         "performed": True,

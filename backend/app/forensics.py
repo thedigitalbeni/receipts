@@ -115,25 +115,49 @@ def extract_exif(image_bytes: bytes) -> dict[str, Any]:
     Includes the GPS IFD if present. Returns an empty dict if
     the image has no EXIF data or is not a format that supports EXIF.
 
-    The returned dictionary includes a special key "editing_software_detected"
-    (bool) that indicates whether known editing software was identified
-    in the EXIF metadata — this feeds directly into Rule 4's condition.
+    The returned dictionary includes:
+    - editing_software_detected (bool)
+    - editing_software_name (str | None)
+    - camera_metadata_detected (bool)
+    - camera_make (str | None)
+    - camera_model (str | None)
+    - camera_lens (str | None)
+    - date_taken (str | None)
     """
-    result: dict[str, Any] = {}
+    result: dict[str, Any] = {
+        "editing_software_detected": False,
+        "editing_software_name": None,
+        "camera_metadata_detected": False,
+        "camera_make": None,
+        "camera_model": None,
+        "camera_lens": None,
+        "date_taken": None,
+    }
 
     try:
         img = Image.open(io.BytesIO(image_bytes))
         exif_data = img.getexif()
     except Exception:
-        return {"editing_software_detected": False}
+        return result
 
     if not exif_data:
-        return {"editing_software_detected": False}
+        return result
 
     # Standard EXIF tags
     for tag_id, value in exif_data.items():
         tag_name = TAGS.get(tag_id, f"Unknown_{tag_id}")
         result[tag_name] = _decode_exif_value(value)
+
+    # Exif IFD (contains DateTimeOriginal, LensModel, etc.)
+    try:
+        exif_ifd = exif_data.get_ifd(IFD.Exif)
+        if exif_ifd:
+            for tag_id, value in exif_ifd.items():
+                tag_name = TAGS.get(tag_id, f"Exif_{tag_id}")
+                if tag_name not in result:
+                    result[tag_name] = _decode_exif_value(value)
+    except Exception:
+        pass
 
     # GPS IFD (per Section 3 requirement: extract via get_ifd())
     try:
@@ -149,16 +173,22 @@ def extract_exif(image_bytes: bytes) -> dict[str, Any]:
         pass
 
     # Detect editing software
-    result["editing_software_detected"] = _detect_editing_software(result)
+    is_edited, software_name = _detect_editing_software(result)
+    result["editing_software_detected"] = is_edited
+    result["editing_software_name"] = software_name
+
+    # Extract camera metadata
+    cam_meta = extract_camera_metadata(result)
+    result.update(cam_meta)
 
     return result
 
 
-# Known editing software identifiers checked against EXIF "Software",
-# "ProcessingSoftware", and "Creator" tags.
+# Known editing software identifiers checked against EXIF metadata tags
 _KNOWN_EDITORS = [
     "photoshop",
     "lightroom",
+    "adobe",
     "gimp",
     "capture one",
     "affinity",
@@ -171,23 +201,70 @@ _KNOWN_EDITORS = [
     "snapseed",
     "vsco",
     "canva",
+    "pixlr",
+    "photoscape",
+    "topaz",
+    "inshot",
+    "facetune",
+    "meitu",
+    "prisma",
+    "remini",
+    "polarr",
+    "afterlight",
+    "picsart",
+    "fotor",
+    "corel",
+    "photopea",
+    "photofiltre",
+    "skylum",
+    "nik collection",
+    "dxo",
+    "apple photos",
+    "photos.app",
+    "google photos editor",
 ]
 
 
-def _detect_editing_software(exif_dict: dict[str, Any]) -> bool:
+def _detect_editing_software(exif_dict: dict[str, Any]) -> tuple[bool, str | None]:
     """Check EXIF metadata for known editing software signatures.
 
-    Checks the "Software", "ProcessingSoftware", and "Creator" tags
-    against a list of known image editing tools.
+    Checks the "Software", "ProcessingSoftware", "Creator", "History",
+    "DocumentID", and "ImageDescription" tags.
     """
-    tags_to_check = ["Software", "ProcessingSoftware", "Creator"]
+    tags_to_check = ["Software", "ProcessingSoftware", "Creator", "History", "DocumentID", "ImageDescription"]
     for tag in tags_to_check:
         value = exif_dict.get(tag)
         if value and isinstance(value, str):
             value_lower = value.lower()
-            if any(editor in value_lower for editor in _KNOWN_EDITORS):
-                return True
-    return False
+            for editor in _KNOWN_EDITORS:
+                if editor in value_lower:
+                    return True, value.strip()
+    return False, None
+
+
+def extract_camera_metadata(exif_dict: dict[str, Any]) -> dict[str, Any]:
+    """Extract camera hardware metadata from EXIF tags.
+
+    Looks for standard hardware fields (Make, Model, LensModel, DateTimeOriginal)
+    to determine if genuine camera tags are present.
+    """
+    make = exif_dict.get("Make")
+    model = exif_dict.get("Model")
+    lens = exif_dict.get("LensModel") or exif_dict.get("Lens") or exif_dict.get("Exif_LensModel")
+    date_taken = exif_dict.get("DateTimeOriginal") or exif_dict.get("DateTime") or exif_dict.get("Exif_DateTimeOriginal")
+
+    if isinstance(lens, (list, tuple)):
+        lens = " ".join(str(x) for x in lens)
+
+    has_camera_hardware = bool(make or model)
+
+    return {
+        "camera_metadata_detected": has_camera_hardware,
+        "camera_make": str(make).strip() if make else None,
+        "camera_model": str(model).strip() if model else None,
+        "camera_lens": str(lens).strip() if lens else None,
+        "date_taken": str(date_taken).strip() if date_taken else None,
+    }
 
 
 # ---------------------------------------------------------------------------

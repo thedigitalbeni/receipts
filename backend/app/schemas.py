@@ -101,6 +101,8 @@ class MetadataEvidence(BaseModel):
     quantization_software: Optional[str] = None
     camera_make: Optional[str] = None
     camera_model: Optional[str] = None
+    camera_lens: Optional[str] = None
+    camera_metadata_detected: bool = False
     date_taken: Optional[str] = None
     gps_present: bool = False
     raw_exif: Optional[dict] = None

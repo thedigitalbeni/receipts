@@ -12,27 +12,46 @@ class EvaluationResult(BaseModel):
 def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResult:
     """Apply the rules engine to the aggregated evidence.
     
-    Implements the Decision Logic defined in Section 2, ensuring that
-    first-match-wins for the headline classification, but evidence from
-    all matching rules is appended to the evidence array (Multi-Match Policy).
+    Implements the Decision Logic defined in Section 2 with multi-dimensional
+    evidence accumulation. Classification first-match-wins for headline,
+    while all forensic and context findings are transparently preserved.
     """
     classification = None
     evidence_strength = None
     interpretation = None
     evidence_list = []
 
-    # Standalone Evidence Check
+    # Standalone Forensic Evidence Check
     # Appended immediately regardless of which rule wins the headline.
     if aggregated_evidence.metadata.editing_software_detected:
-        evidence_list.append("Editing software detected in EXIF metadata")
+        sw_name = aggregated_evidence.metadata.editing_software_name
+        if sw_name:
+            evidence_list.append(f"Editing software detected in EXIF: {sw_name}")
+        else:
+            evidence_list.append("Editing software detected in EXIF metadata")
+
     if aggregated_evidence.metadata.ela_suspicious:
         evidence_list.append("Error Level Analysis detected inconsistent compression artifacts")
+
     if aggregated_evidence.metadata.quantization_software:
         evidence_list.append(
             f"JPEG quantization tables match {aggregated_evidence.metadata.quantization_software}"
         )
 
-    # Rule 1: C2PA contains ai_generated
+    # Standalone Camera Metadata Check (Honest metadata, not cryptographic proof)
+    if aggregated_evidence.metadata.camera_metadata_detected and not aggregated_evidence.c2pa.camera_signature:
+        make = aggregated_evidence.metadata.camera_make or ""
+        model = aggregated_evidence.metadata.camera_model or ""
+        lens = aggregated_evidence.metadata.camera_lens or ""
+        cam_info = f"{make} {model}".strip()
+        if lens:
+            cam_info += f" ({lens})"
+        if cam_info:
+            evidence_list.append(f"Camera metadata present in EXIF: {cam_info}")
+        else:
+            evidence_list.append("Camera hardware metadata present in EXIF")
+
+    # Rule 1: C2PA explicitly asserts AI generation
     if aggregated_evidence.c2pa.ai_generated:
         if not classification:
             classification = "AI-Generated Content"
@@ -43,7 +62,7 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
             )
         evidence_list.append("C2PA manifest explicitly declares AI generation")
     
-    # Rule 2: C2PA contains camera signature
+    # Rule 2: C2PA contains cryptographic camera hardware signature
     if aggregated_evidence.c2pa.camera_signature:
         if not classification:
             classification = "Verified Camera Original"
@@ -54,11 +73,10 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
             )
         evidence_list.append("Cryptographically signed camera manifest present and valid")
 
-    # Rule 3: Trace finds visual match indexed > 1 year ago.
-    # Three trigger scenarios (first-match-wins for strength):
+    # Rule 3: Trace finds visual match indexed > 1 year ago (Strict Temporal Contradiction).
+    # Requires date confirmation (Wayback Machine or publication date in URL/snippet):
     #   A) Wayback Machine confirms timestamp > 1 year → Strong
     #   B) URL path/snippet date > 1 year → Moderate
-    #   C) 5+ matches across 3+ unique domains → Moderate
     is_rule_3 = False
     rule_3_strength = None
     rule_3_evidence_items = []
@@ -82,7 +100,7 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
             except ValueError:
                 continue
 
-    # Scenario B: URL-extracted date > 1 year (fallback when Wayback fails)
+    # Scenario B: URL-extracted date > 1 year (fallback when Wayback has no snapshot)
     if not is_rule_3:
         for result in aggregated_evidence.origin_trace.results:
             if result.earliest_url_date:
@@ -102,17 +120,6 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
                 except ValueError:
                     continue
 
-    # Scenario C: High match count across many domains
-    if not is_rule_3:
-        match_count = aggregated_evidence.origin_trace.match_count
-        unique_domains = aggregated_evidence.origin_trace.unique_domains
-        if match_count >= 5 and unique_domains >= 3:
-            is_rule_3 = True
-            rule_3_strength = EvidenceStrength.moderate
-            rule_3_evidence_items.append(
-                f"Visually identical image found across {match_count} sources on {unique_domains} different websites"
-            )
-
     if is_rule_3:
         if not classification:
             classification = "Recirculated / Out of Context"
@@ -124,7 +131,15 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
             )
         evidence_list.extend(rule_3_evidence_items)
 
-    # Rule 4: editing detected (EXIF, ELA, or quantization)
+    # General Web Matches context (if not already covered by Rule 3)
+    match_count = aggregated_evidence.origin_trace.match_count
+    unique_domains = aggregated_evidence.origin_trace.unique_domains
+    if match_count > 0 and not is_rule_3:
+        evidence_list.append(
+            f"Found across {match_count} source{'s' if match_count != 1 else ''} on {unique_domains} website{'s' if unique_domains != 1 else ''}"
+        )
+
+    # Rule 4: editing detected (EXIF software, ELA anomaly, or quantization fingerprint)
     is_rule_4 = (
         aggregated_evidence.metadata.editing_software_detected
         or aggregated_evidence.metadata.ela_suspicious
@@ -140,7 +155,6 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
                 "most photos are lightly edited. Treat this as a prompt for closer "
                 "scrutiny, not a verdict."
             )
-        # Evidence items were already appended in the Standalone Check above.
 
     # Rule 5: Fallback (All checks return empty)
     if not classification:
@@ -151,15 +165,24 @@ def evaluate_evidence(aggregated_evidence: AggregatedEvidence) -> EvaluationResu
             "This does not confirm the image is authentic — it means the available "
             "evidence is limited, not that the image is verified true."
         )
-        evidence_list.extend([
-            "No C2PA credentials found",
-            "Metadata stripped",
-            "No origin trace found"
-        ])
+        if not evidence_list:
+            evidence_list.extend([
+                "No C2PA credentials found",
+                "Metadata stripped",
+                "No origin trace found"
+            ])
+
+    # Deduplicate evidence while preserving insertion order
+    seen = set()
+    deduped_evidence = []
+    for item in evidence_list:
+        if item not in seen:
+            seen.add(item)
+            deduped_evidence.append(item)
 
     return EvaluationResult(
         classification=classification,
         evidence_strength=evidence_strength,
-        evidence=evidence_list,
+        evidence=deduped_evidence,
         interpretation=interpretation
     )

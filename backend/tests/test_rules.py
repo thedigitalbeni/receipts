@@ -247,15 +247,15 @@ class TestRulesEngine:
         assert "already circulating before" in result.interpretation
 
     @patch("app.rules.datetime")
-    def test_rule_3_match_count_triggers_moderate(self, mock_datetime):
-        """Rule 3 Scenario C: 5+ matches across 3+ domains triggers Moderate."""
+    def test_rule_3_match_count_without_date_does_not_falsely_recirculate(self, mock_datetime):
+        """Match count without temporal proof does NOT falsely trigger Recirculated."""
         mock_datetime.now.return_value = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
         mock_datetime.fromisoformat = datetime.fromisoformat
 
         ev = create_base_evidence()
         ev.origin_trace.match_count = 8
         ev.origin_trace.unique_domains = 5
-        # No wayback or url_date data
+        # No wayback or url_date data (e.g. today's viral image)
         ev.origin_trace.results = [
             OriginTraceResult(url=f"https://site{i}.com/img", domain=f"site{i}.com")
             for i in range(8)
@@ -263,9 +263,60 @@ class TestRulesEngine:
 
         result = evaluate_evidence(ev)
 
+        # Should NOT be Recirculated without temporal contradiction
+        assert result.classification == "Unverified — No Provenance Found"
+        assert result.evidence_strength == EvidenceStrength.limited
+        assert "Found across 8 sources on 5 websites" in result.evidence
+
+    def test_camera_metadata_honest_reporting(self):
+        """Camera EXIF is reported honestly in evidence, not as Verified Camera Original."""
+        ev = create_base_evidence()
+        ev.metadata.camera_metadata_detected = True
+        ev.metadata.camera_make = "Canon"
+        ev.metadata.camera_model = "EOS R5"
+        ev.metadata.camera_lens = "RF 24-70mm F2.8 L IS USM"
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Unverified — No Provenance Found"
+        assert "Camera metadata present in EXIF: Canon EOS R5 (RF 24-70mm F2.8 L IS USM)" in result.evidence
+        assert "Verified Camera Original" not in result.classification
+
+    def test_editing_software_named_reporting(self):
+        """Editing software name from EXIF is included in evidence string."""
+        ev = create_base_evidence()
+        ev.metadata.editing_software_detected = True
+        ev.metadata.editing_software_name = "Adobe Photoshop 2024 (Macintosh)"
+
+        result = evaluate_evidence(ev)
+
+        assert result.classification == "Post-Processed Image"
+        assert "Editing software detected in EXIF: Adobe Photoshop 2024 (Macintosh)" in result.evidence
+
+    @patch("app.rules.datetime")
+    def test_recirculated_plus_postprocessed_multidimensional(self, mock_datetime):
+        """Multi-dimensional: Old archived image edited in Photoshop has both findings in receipt."""
+        mock_datetime.now.return_value = datetime(2024, 5, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.fromisoformat = datetime.fromisoformat
+
+        ev = create_base_evidence()
+        ev.origin_trace.results = [
+            OriginTraceResult(
+                url="https://example.com/archive",
+                domain="example.com",
+                earliest_wayback_timestamp="2018-06-15T00:00:00+00:00"
+            )
+        ]
+        ev.metadata.editing_software_detected = True
+        ev.metadata.editing_software_name = "Adobe Photoshop CC 2018"
+        ev.metadata.quantization_software = "Adobe Photoshop (High Quality)"
+
+        result = evaluate_evidence(ev)
+
         assert result.classification == "Recirculated / Out of Context"
-        assert result.evidence_strength == EvidenceStrength.moderate
-        assert any("found across 8 sources" in e for e in result.evidence)
+        assert "Visually identical image indexed over a year ago (Wayback Machine confirmed)" in result.evidence
+        assert "Editing software detected in EXIF: Adobe Photoshop CC 2018" in result.evidence
+        assert "JPEG quantization tables match Adobe Photoshop (High Quality)" in result.evidence
 
     def test_rule_4_ela_triggers(self):
         """Rule 4: ELA suspicious detection triggers Post-Processed."""
