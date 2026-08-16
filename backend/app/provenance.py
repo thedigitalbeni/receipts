@@ -107,16 +107,26 @@ def _get_all_digital_source_types(manifest: dict) -> set[str]:
 
     for assertion in active.get("assertions", []):
         label = assertion.get("label", "")
-        if label.startswith("c2pa.actions"):
+        if label.startswith("c2pa.actions") or "actions" in label:
             data = assertion.get("data", {})
             for action in data.get("actions", []):
-                dst = action.get("digitalSourceType", "")
-                if dst:
-                    result.add(dst)
+                dst = action.get("digitalSourceType")
+                if isinstance(dst, str) and dst.strip():
+                    result.add(dst.strip())
+                elif isinstance(dst, list):
+                    for d in dst:
+                        if isinstance(d, str) and d.strip():
+                            result.add(d.strip())
+
                 params = action.get("parameters", {})
-                dst_param = params.get("digitalSourceType", "")
-                if dst_param:
-                    result.add(dst_param)
+                if isinstance(params, dict):
+                    dst_param = params.get("digitalSourceType")
+                    if isinstance(dst_param, str) and dst_param.strip():
+                        result.add(dst_param.strip())
+                    elif isinstance(dst_param, list):
+                        for d in dst_param:
+                            if isinstance(d, str) and d.strip():
+                                result.add(d.strip())
 
     return result
 
