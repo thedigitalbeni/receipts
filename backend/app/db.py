@@ -128,3 +128,12 @@ def get_receipt_by_sha256(sha256: str) -> Optional[dict]:
     if res.data and len(res.data) > 0:
         return res.data[0]
     return None
+
+
+def get_receipt_by_id(receipt_id: str) -> Optional[dict]:
+    """Retrieve a verified receipt row by UUID."""
+    client = get_supabase_client()
+    res = client.table("receipts").select("*").eq("id", receipt_id).execute()
+    if res.data and len(res.data) > 0:
+        return res.data[0]
+    return None

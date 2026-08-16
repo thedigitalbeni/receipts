@@ -56,7 +56,7 @@ from app.origin_trace import query_origin_trace, to_frozen_contract
 from app.rules import evaluate_evidence
 from app.ela import compute_ela
 # Fix #6: Import get_receipt_by_sha256 for the SHA-256 cache layer.
-from app.db import upload_image_to_storage, insert_receipt, get_receipt_by_sha256
+from app.db import upload_image_to_storage, insert_receipt, get_receipt_by_sha256, get_receipt_by_id
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,19 @@ async def debug_env() -> dict:
         "supabase_url_set": bool(os.environ.get("SUPABASE_URL")),
         "serpapi_key_set": bool(os.environ.get("SERPAPI_API_KEY")),
     }
+
+
+@app.get("/receipt/{receipt_id}")
+async def get_receipt_endpoint(receipt_id: str):
+    """Retrieve a verified receipt by UUID."""
+    try:
+        receipt = get_receipt_by_id(receipt_id)
+        if not receipt:
+            return JSONResponse(status_code=404, content={"detail": "Receipt not found"})
+        return receipt
+    except Exception as e:
+        logger.exception(f"Error fetching receipt {receipt_id}: {e}")
+        return JSONResponse(status_code=500, content={"detail": "Error fetching receipt"})
 
 
 @app.post("/verify", response_model=VerifyResponse)
