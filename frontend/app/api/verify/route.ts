@@ -6,7 +6,7 @@ export const maxDuration = 60; // Max allowed execution duration on serverless
 const BACKEND_URL = (
   process.env.BACKEND_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
-  'https://receipts-backend.onrender.com'
+  'https://receipts-backend.vercel.app'
 ).replace(/\/+$/, '');
 
 export async function POST(req: NextRequest) {

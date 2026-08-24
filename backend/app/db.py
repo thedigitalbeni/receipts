@@ -23,14 +23,20 @@ from supabase import create_client, Client
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Load .env from project root (one level above backend/)
+# Load .env from project root — works locally; on Vercel env vars are injected
+# natively so load_dotenv is a no-op (that is fine).
 # ---------------------------------------------------------------------------
-# The .env file was provisioned during M2 and contains SUPABASE_URL,
-# SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY. We load it here so
-# os.environ.get() picks up the values regardless of how the server is
-# started (uvicorn, pytest, direct python).
-_env_path = Path(__file__).resolve().parent.parent.parent / ".env"
-load_dotenv(_env_path)
+_this_file = Path(__file__).resolve()
+# Walk up until we find a .env file or exhaust the filesystem
+for _candidate in [
+    _this_file.parent.parent.parent / ".env",   # monorepo root (local)
+    _this_file.parent.parent / ".env",            # backend/ root
+    _this_file.parent / ".env",                   # app/ (unlikely but safe)
+]:
+    if _candidate.exists():
+        load_dotenv(_candidate)
+        break
+
 
 
 class SupabaseConfigError(RuntimeError):
