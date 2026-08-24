@@ -233,10 +233,16 @@ async def verify(
     try:
         cached_row = get_receipt_by_sha256(sha256_hash)
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
         logger.exception("Internal server error during cache check")
         return JSONResponse(
             status_code=500,
-            content={"detail": "Internal server error during verification"}
+            content={
+                "detail": "Internal server error during verification",
+                "error": str(e),
+                "traceback": tb,
+            }
         )
 
     if cached_row:
@@ -368,8 +374,14 @@ async def verify(
             cached=False,
         )
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
         logger.exception("Internal server error during verification pipeline")
         return JSONResponse(
             status_code=500,
-            content={"detail": "Internal server error during verification"}
+            content={
+                "detail": "Internal server error during verification",
+                "error": str(e),
+                "traceback": tb,
+            }
         )
