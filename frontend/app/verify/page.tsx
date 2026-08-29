@@ -218,6 +218,8 @@ export default function ReceiptsPage() {
   const [copied, setCopied] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null);
   const [retrying, setRetrying] = useState(false);
+  const [urlCorrected, setUrlCorrected] = useState(false);
+
 
   // Close share menu on outside click
   useEffect(() => {
@@ -248,26 +250,64 @@ export default function ReceiptsPage() {
     else if (e.type === 'dragleave') setDragActive(false);
   }, []);
 
-// Helper: sanitize pasted URLs on mobile and desktop
+// Helper: sanitize pasted URLs — handles every common paste artifact
 function sanitizeImageUrl(raw: string): string {
   if (!raw) return '';
-  let clean = raw.trim()
-    .replace(/^["'“‘]+|["'”’]+$/g, '')
-    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+
+  let clean = raw
+    .replace(/[\r\n\t]/g, '')                          // strip newlines & tabs
+    .replace(/[\u200B-\u200D\uFEFF\u00AD\u034F\u2028\u2029]/g, '') // zero-width
+    .replace(/^[\u201C\u201D\u2018\u2019\u0022\u0027\u0060\u00AB\u00BB]+/, '') // leading smart quotes
+    .replace(/[\u201C\u201D\u2018\u2019\u0022\u0027\u0060\u00AB\u00BB]+$/, '') // trailing smart quotes
+    .replace(/^[<\[]+|[>\]]+$/g, '')                   // surrounding brackets/angle-brackets
+    .replace(/ +/g, '')                                // remove ALL spaces (spaces are never valid in URLs)
     .trim();
+
+  // Add https:// to bare domains like "example.com/photo.jpg"
+  if (clean && !clean.startsWith('http://') && !clean.startsWith('https://') && !clean.startsWith('data:')) {
+    if (/^[a-zA-Z0-9]/.test(clean) && clean.includes('.')) {
+      clean = 'https://' + clean;
+    }
+  }
 
   try {
     const parsed = new URL(clean);
-    // Unwrap Google Images preview links copied on mobile
-    if (parsed.hostname.includes('google.') && (parsed.pathname.includes('/imgres') || parsed.pathname.includes('/url'))) {
-      const realUrl = parsed.searchParams.get('imgurl') || parsed.searchParams.get('url');
-      if (realUrl && realUrl.startsWith('http')) {
-        clean = decodeURIComponent(realUrl);
-      }
+
+    // Unwrap Google Images / Search redirect links
+    if (parsed.hostname.includes('google.') &&
+        (parsed.pathname.includes('/imgres') || parsed.pathname.includes('/url') || parsed.pathname.includes('/imgrefurl'))) {
+      const real = parsed.searchParams.get('imgurl') || parsed.searchParams.get('url') || parsed.searchParams.get('imgrefurl');
+      if (real?.startsWith('http')) clean = decodeURIComponent(real);
     }
+
+    // Unwrap Facebook external link wrappers
+    if (/l\.facebook\.com|lm\.facebook\.com/.test(parsed.hostname)) {
+      const real = parsed.searchParams.get('u');
+      if (real?.startsWith('http')) clean = decodeURIComponent(real);
+    }
+
+    // Unwrap Instagram external link redirect
+    if (parsed.hostname.includes('l.instagram.com')) {
+      const real = parsed.searchParams.get('u');
+      if (real?.startsWith('http')) clean = decodeURIComponent(real);
+    }
+
+    // Unwrap Twitter/X t.co wrappers
+    if (parsed.hostname === 't.co') {
+      const real = parsed.searchParams.get('url');
+      if (real?.startsWith('http')) clean = decodeURIComponent(real);
+    }
+
+    // Strip tracking-only params that break CDN access
+    const junk = ['fbclid','utm_source','utm_medium','utm_campaign','utm_term','utm_content','ref','referrer','mc_cid','mc_eid','gclid','msclkid'];
+    let stripped = false;
+    junk.forEach(p => { if (parsed.searchParams.has(p)) { parsed.searchParams.delete(p); stripped = true; } });
+    if (stripped) clean = parsed.toString();
+
   } catch {
-    // If not a valid URL yet, return cleaned string for server validation
+    // Not a valid URL yet — return cleaned string, let server validate
   }
+
   return clean;
 }
 
@@ -396,9 +436,10 @@ function isValidImageFile(file: File): boolean {
   const resetState = () => {
     if (thumbnail) URL.revokeObjectURL(thumbnail);
     setAppState('DROPZONE'); setErrorMsg(null); setThumbnail(null);
-    setImageUrl(''); setResult(null); setImageDetails(null); setShareOpen(false); setCopied(false);
+    setImageUrl(''); setResult(null); setImageDetails(null); setShareOpen(false); setCopied(false); setUrlCorrected(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
 
   const getReceiptFullUrl = () => {
     if (!result) return '';
@@ -546,13 +587,34 @@ function isValidImageFile(file: File): boolean {
                 <div className="relative flex-1 min-w-0">
                   <ExternalLink className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
                   <input
-                    id="url-input" type="url" value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
+                    id="url-input" type="text" value={imageUrl}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const clean = sanitizeImageUrl(raw);
+                      // Show corrected badge only when something was actually changed
+                      setUrlCorrected(!!raw && clean !== raw);
+                      setImageUrl(clean);
+                    }}
+                    onPaste={(e) => {
+                      // Intercept paste and sanitize immediately
+                      e.preventDefault();
+                      const pasted = e.clipboardData.getData('text');
+                      const clean = sanitizeImageUrl(pasted);
+                      setUrlCorrected(!!pasted && clean !== pasted);
+                      setImageUrl(clean);
+                    }}
                     onKeyDown={handleUrlKeyDown}
-                    placeholder="https://example.com/image.jpg"
+                    placeholder="Paste image URL (spaces & redirects auto-fixed)"
                     aria-label="Image URL"
-                    className="w-full pl-10 sm:pl-11 pr-3 bg-white/5 border border-white/10 rounded-2xl py-3.5 sm:py-4 text-sm text-white placeholder-white/25 focus:outline-none focus:border-teal-400/60 focus:ring-1 focus:ring-teal-400/30 transition-all"
+                    className={`w-full pl-10 sm:pl-11 pr-3 bg-white/5 border rounded-2xl py-3.5 sm:py-4 text-sm text-white placeholder-white/25 focus:outline-none focus:ring-1 transition-all ${urlCorrected ? 'border-teal-400/60 focus:border-teal-400/80 focus:ring-teal-400/30' : 'border-white/10 focus:border-teal-400/60 focus:ring-teal-400/30'}`}
                   />
+                  {/* Auto-corrected indicator */}
+                  {urlCorrected && (
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 bg-teal-500/15 border border-teal-400/30 text-teal-400 text-[10px] font-semibold px-2 py-0.5 rounded-full pointer-events-none">
+                      <Check className="w-3 h-3" />
+                      Auto-fixed
+                    </div>
+                  )}
                 </div>
                 <button
                   id="verify-url-btn" onClick={onUrlSubmit}
@@ -568,6 +630,7 @@ function isValidImageFile(file: File): boolean {
                 {['C2PA', 'EXIF', 'ELA', 'Quantization', 'Origin Trace'].map((c) => (
                   <span key={c} className="text-[10px] sm:text-[11px] text-white/35 bg-white/5 border border-white/10 px-2.5 sm:px-3 py-1 rounded-full font-medium">{c}</span>
                 ))}
+
               </div>
             </motion.div>
           )}
